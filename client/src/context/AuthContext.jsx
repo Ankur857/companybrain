@@ -101,6 +101,26 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const signup = async (signupData) => {
+    try {
+      const res = await api.signup(signupData);
+      if (res.success) {
+        localStorage.setItem('companybrain_token', res.token);
+        setUser(res.user);
+        setTenant(res.tenant);
+
+        const compRes = await api.getCompanies();
+        if (compRes.success) setCompanies(compRes.companies || []);
+
+        showToast(`Registration successful! Welcome to ${res.tenant.name}, ${res.user.name}.`, 'success');
+        return true;
+      }
+    } catch (err) {
+      showToast(err.message, 'error');
+      return false;
+    }
+  };
+
   const logout = async () => {
     try {
       await api.logout();
@@ -120,6 +140,7 @@ export function AuthProvider({ children }) {
         personas,
         loading,
         login,
+        signup,
         quickLoginAs,
         switchTenant,
         logout,

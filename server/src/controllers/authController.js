@@ -12,6 +12,38 @@ export class AuthController {
     }
   }
 
+  static async signup(req, res) {
+    try {
+      const {
+        mode,
+        name,
+        email,
+        password,
+        department,
+        tenantId,
+        companyName,
+        companySlug,
+        description,
+      } = req.body;
+
+      const result = await AuthService.signup({
+        mode,
+        name,
+        email,
+        password,
+        department,
+        tenantId,
+        companyName,
+        companySlug,
+        description,
+      });
+
+      return res.status(201).json({ success: true, ...result });
+    } catch (err) {
+      return res.status(400).json({ success: false, error: err.message });
+    }
+  }
+
   static async me(req, res) {
     try {
       const { data: tenant } = await db.from('tenants').select('*').eq('id', req.user.tenant_id).single();

@@ -29,6 +29,7 @@ router.get('/health', (req, res) => {
 
 // ================= AUTHENTICATION =================
 router.post('/auth/login', AuthController.login);
+router.post('/auth/signup', AuthController.signup);
 router.get('/auth/personas', AuthController.getDemoPersonas);
 router.post('/auth/logout', AuthController.logout);
 router.get('/auth/me', authenticate, AuthController.me);

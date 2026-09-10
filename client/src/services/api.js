@@ -35,6 +35,8 @@ export const api = {
   // Auth
   login: (email, password, tenantId) =>
     request('/auth/login', { method: 'POST', body: JSON.stringify({ email, password, tenantId }) }),
+  signup: (data) =>
+    request('/auth/signup', { method: 'POST', body: JSON.stringify(data) }),
   getPersonas: () => request('/auth/personas'),
   getMe: () => request('/auth/me'),
   switchTenant: (tenantId) =>

@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { AuthModal } from './AuthModal';
 import {
   Shield,
   Building2,
@@ -8,13 +9,16 @@ import {
   Users,
   Check,
   CheckCircle2,
-  Lock
+  Lock,
+  UserPlus,
+  LogIn
 } from 'lucide-react';
 
 export function Header() {
   const { user, tenant, companies, personas, switchTenant, quickLoginAs, logout } = useAuth();
   const [showCompanyMenu, setShowCompanyMenu] = useState(false);
   const [showPersonaMenu, setShowPersonaMenu] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
 
   const companyRef = useRef(null);
   const personaRef = useRef(null);
@@ -175,21 +179,40 @@ export function Header() {
             )}
           </div>
 
-          {/* User Avatar & Logout */}
-          <div className="flex items-center gap-2 pl-2 border-l border-white/[0.08]">
-            <div className="w-7 h-7 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center text-xs font-semibold text-slate-200" title={user?.email}>
-              {user?.name?.[0] || 'U'}
+          {/* Sign In / Register Modal Trigger & User Profile */}
+          {user ? (
+            <div className="flex items-center gap-2 pl-2 border-l border-white/[0.08]">
+              <button
+                onClick={() => setShowAuthModal(true)}
+                className="w-7 h-7 rounded-full bg-slate-800 hover:bg-slate-700 border border-white/10 flex items-center justify-center text-xs font-semibold text-slate-200 transition-colors"
+                title={`${user.name} (${user.email}) - Click to Switch Account or Sign Up`}
+              >
+                {user.name?.[0] || 'U'}
+              </button>
+              <button
+                onClick={logout}
+                className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-white/[0.06] transition-colors"
+                title="Sign Out"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+              </button>
             </div>
-            <button
-              onClick={logout}
-              className="p-1.5 text-slate-400 hover:text-slate-200 rounded-lg hover:bg-white/[0.06] transition-colors"
-              title="Sign Out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          </div>
+          ) : (
+            <div className="pl-2 border-l border-white/[0.08]">
+              <button
+                onClick={() => setShowAuthModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-all shadow-sm"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Sign In / Register</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Auth Modal (Login / Signup) */}
+      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
     </header>
   );
 }

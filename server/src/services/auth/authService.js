@@ -1,11 +1,196 @@
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 import { db } from '../../database/db.js';
 import { AuditService } from '../audit/auditService.js';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'companybrain_super_secure_jwt_secret_key_2026_enterprise';
 
 export class AuthService {
+  /**
+   * Register a new employee or provision a brand new company tenant
+   */
+  static async signup({
+    mode = 'JOIN_TENANT', // 'JOIN_TENANT' or 'NEW_TENANT'
+    name,
+    email,
+    password,
+    department = 'General',
+    tenantId,
+    companyName,
+    companySlug,
+    description,
+  }) {
+    if (!email || !password || !name) {
+      throw new Error('Name, email, and password are required.');
+    }
+
+    const cleanEmail = email.toLowerCase().trim();
+
+    // Check if email already exists
+    const { data: existingUser } = await db.from('users').select('*').eq('email', cleanEmail).single();
+    if (existingUser) {
+      throw new Error('An account with this email address already exists.');
+    }
+
+    const password_hash = bcrypt.hashSync(password, 10);
+    let targetTenantId = tenantId;
+    let targetTenant = null;
+    let assignedRoleId = null;
+
+    if (mode === 'NEW_TENANT') {
+      if (!companyName) {
+        throw new Error('Company name is required for enterprise registration.');
+      }
+
+      const slug = companySlug || companyName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      const newTenantId = crypto.randomUUID();
+
+      const { data: createdTenant } = await db.from('tenants').insert({
+        id: newTenantId,
+        name: companyName.trim(),
+        slug: slug || `company-${Date.now()}`,
+        description: description || `${companyName} enterprise workspace`,
+        status: 'ACTIVE',
+      });
+      targetTenantId = newTenantId;
+      targetTenant = createdTenant || { id: newTenantId, name: companyName };
+
+      // Create standard roles for this tenant
+      const adminRoleId = crypto.randomUUID();
+      const empRoleId = crypto.randomUUID();
+
+      await db.from('roles').insert([
+        {
+          id: adminRoleId,
+          tenant_id: newTenantId,
+          name: 'Admin',
+          description: 'Tenant Administrator',
+          permissions: ['ALL'],
+        },
+        {
+          id: empRoleId,
+          tenant_id: newTenantId,
+          name: 'Employee',
+          description: 'Regular Employee',
+          permissions: ['QUERY_RAG', 'VIEW_AUTHORIZED_DOCS'],
+        },
+      ]);
+      assignedRoleId = adminRoleId;
+
+      // Create default access groups
+      const generalGroupId = crypto.randomUUID();
+      const leadershipGroupId = crypto.randomUUID();
+      await db.from('groups').insert([
+        { id: generalGroupId, tenant_id: newTenantId, name: 'General', description: 'All company personnel' },
+        { id: leadershipGroupId, tenant_id: newTenantId, name: 'Leadership', description: 'Executive and administrative clearance' },
+      ]);
+
+      // Create the Admin User
+      const newUserId = crypto.randomUUID();
+      await db.from('users').insert({
+        id: newUserId,
+        tenant_id: newTenantId,
+        name: name.trim(),
+        email: cleanEmail,
+        password_hash,
+        role_id: assignedRoleId,
+        department: department || 'Executive',
+        status: 'ACTIVE',
+      });
+
+      // Add Admin to General and Leadership groups
+      await db.from('user_groups').insert([
+        { user_id: newUserId, group_id: generalGroupId },
+        { user_id: newUserId, group_id: leadershipGroupId },
+      ]);
+
+      await AuditService.logEvent({
+        tenant_id: newTenantId,
+        user_id: newUserId,
+        user_name: name,
+        action: 'TENANT_CREATE',
+        resource_type: 'TENANT',
+        resource_id: newTenantId,
+        decision: 'ALLOW',
+        reason: `New enterprise tenant [${companyName}] provisioned with Admin [${cleanEmail}].`,
+      });
+
+      const userProfile = await this.getUserFullProfile(newUserId, newTenantId);
+      const token = jwt.sign(
+        { userId: newUserId, tenantId: newTenantId, roleName: userProfile.role_name, email: cleanEmail },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      return { token, user: userProfile, tenant: targetTenant };
+    } else {
+      // JOIN_TENANT
+      if (!targetTenantId) {
+        const { data: allTenants } = await db.from('tenants').select('*');
+        const matched = (allTenants || []).find(t => cleanEmail.endsWith(`@${t.slug}.com`)) || allTenants?.[0];
+        if (matched) {
+          targetTenantId = matched.id;
+          targetTenant = matched;
+        } else {
+          throw new Error('Please select an enterprise company to join.');
+        }
+      } else {
+        const { data: tenant } = await db.from('tenants').select('*').eq('id', targetTenantId).single();
+        if (!tenant) throw new Error('Selected company tenant was not found.');
+        targetTenant = tenant;
+      }
+
+      // Find Employee role for this tenant or global fallback
+      const { data: roles } = await db.from('roles').select('*');
+      const empRole = (roles || []).find(r => r.name === 'Employee' && (r.tenant_id === targetTenantId || !r.tenant_id)) || roles?.[0];
+      assignedRoleId = empRole?.id || null;
+
+      // Find General group for this tenant
+      const { data: groups } = await db.from('groups').select('*').eq('tenant_id', targetTenantId);
+      const generalGroup = (groups || []).find(g => g.name === 'General') || groups?.[0];
+
+      const newUserId = crypto.randomUUID();
+      await db.from('users').insert({
+        id: newUserId,
+        tenant_id: targetTenantId,
+        name: name.trim(),
+        email: cleanEmail,
+        password_hash,
+        role_id: assignedRoleId,
+        department: department || 'General',
+        status: 'ACTIVE',
+      });
+
+      if (generalGroup) {
+        await db.from('user_groups').insert({
+          user_id: newUserId,
+          group_id: generalGroup.id,
+        });
+      }
+
+      await AuditService.logEvent({
+        tenant_id: targetTenantId,
+        user_id: newUserId,
+        user_name: name,
+        action: 'AUTH_SIGNUP',
+        resource_type: 'USER',
+        resource_id: newUserId,
+        decision: 'ALLOW',
+        reason: `New employee [${cleanEmail}] registered into [${targetTenant.name}].`,
+      });
+
+      const userProfile = await this.getUserFullProfile(newUserId, targetTenantId);
+      const token = jwt.sign(
+        { userId: newUserId, tenantId: targetTenantId, roleName: userProfile.role_name, email: cleanEmail },
+        JWT_SECRET,
+        { expiresIn: '24h' }
+      );
+
+      return { token, user: userProfile, tenant: targetTenant };
+    }
+  }
+
   /**
    * Authenticate employee credentials and issue signed tenant-aware JWT
    */
