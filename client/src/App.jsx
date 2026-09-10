@@ -3,6 +3,7 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
 import { Header } from './components/Header';
 import { Sidebar } from './components/Sidebar';
+import { AuthModal } from './components/AuthModal';
 
 import { Dashboard } from './pages/Dashboard';
 import { AIAssistant } from './pages/AIAssistant';
@@ -17,22 +18,22 @@ import { AuditLogs } from './pages/AuditLogs';
 import { Architecture } from './pages/Architecture';
 
 export default function App() {
-  const { loading, user } = useAuth();
+  const { loading, user, isAuthModalOpen, closeAuthModal } = useAuth();
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-slate-400">
+      <div className="min-h-screen bg-slate-900 flex flex-col items-center justify-center text-slate-300">
         <div className="w-10 h-10 border-3 border-indigo-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-        <div className="font-mono text-sm tracking-wider text-slate-300">
+        <div className="font-mono text-sm tracking-wider text-slate-200">
           INITIALIZING COMPANYBRAIN PLATFORM...
         </div>
-        <div className="text-xs text-slate-500 mt-1">Verifying tenant boundaries & Policy Engine</div>
+        <div className="text-xs text-slate-400 mt-1">Verifying tenant boundaries & Policy Engine</div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-slate-950 text-slate-100 selection:bg-indigo-500 selection:text-white">
+    <div className="min-h-screen flex flex-col bg-[#0b1120] text-slate-100 selection:bg-indigo-500 selection:text-white">
       {/* Top Header */}
       <Header />
 
@@ -42,7 +43,7 @@ export default function App() {
         <Sidebar />
 
         {/* Page Content */}
-        <main className="flex-1 p-4 lg:p-8 overflow-y-auto max-h-[calc(100vh-61px)]">
+        <main className="flex-1 p-4 lg:p-8 overflow-y-auto max-h-[calc(100vh-53px)]">
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/chat" element={<AIAssistant />} />
@@ -59,6 +60,9 @@ export default function App() {
           </Routes>
         </main>
       </div>
+
+      {/* Global Auth Modal */}
+      <AuthModal isOpen={isAuthModalOpen} onClose={closeAuthModal} />
     </div>
   );
 }

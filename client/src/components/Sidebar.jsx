@@ -18,7 +18,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 
 export function Sidebar() {
-  const { user } = useAuth();
+  const { user, tenant, openAuthModal } = useAuth();
   const isAdmin = ['Company Admin', 'Super Admin'].includes(user?.role_name);
 
   const primaryItems = [
@@ -70,8 +70,8 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="w-60 bg-slate-950/60 border-r border-white/[0.06] flex flex-col shrink-0 min-h-[calc(100vh-53px)]">
-      <div className="p-3 flex-1 space-y-6">
+    <aside className="w-60 bg-slate-900/90 border-r border-slate-700/60 flex flex-col shrink-0 min-h-[calc(100vh-53px)]">
+      <div className="p-3 flex-1 space-y-5">
         {/* Core Actions */}
         <div className="space-y-1">
           <div className="px-3 pb-1 text-[10px] font-mono text-slate-500 uppercase tracking-wider">
@@ -89,14 +89,23 @@ export function Sidebar() {
         </div>
       </div>
 
-      {/* Clean Bottom Policy Badge */}
-      <div className="p-3 border-t border-white/[0.06]">
-        <div className="p-3 rounded-lg bg-slate-900/60 border border-white/[0.04] text-[11px] text-slate-400 leading-relaxed">
-          <div className="flex items-center gap-1.5 text-indigo-400 font-medium mb-1">
-            <Sparkles className="w-3 h-3" />
-            <span>Zero-Trust Policy</span>
+      {/* Prominent Login / Signup Action & Session Info */}
+      <div className="p-3 border-t border-slate-700/60 space-y-2">
+        <button
+          onClick={openAuthModal}
+          className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all"
+        >
+          <KeyRound className="w-3.5 h-3.5" />
+          <span>Sign In / Register</span>
+        </button>
+
+        <div className="p-2.5 rounded-lg bg-slate-800/90 border border-slate-700/60 text-[11px] text-slate-300 leading-relaxed">
+          <div className="flex items-center justify-between text-[10px] font-mono text-slate-400 mb-0.5">
+            <span>SESSION</span>
+            <span className="text-emerald-400 font-semibold">ACTIVE</span>
           </div>
-          Authorization runs before retrieval. Zero restricted data is exposed to LLM.
+          <div className="font-semibold text-white truncate">{user?.name || 'Guest User'}</div>
+          <div className="text-[10px] text-indigo-300 truncate">{tenant?.name || 'Acme Technologies'}</div>
         </div>
       </div>
     </aside>

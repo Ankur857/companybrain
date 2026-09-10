@@ -121,6 +121,10 @@ export function AuthProvider({ children }) {
     }
   };
 
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+  const openAuthModal = () => setIsAuthModalOpen(true);
+  const closeAuthModal = () => setIsAuthModalOpen(false);
+
   const logout = async () => {
     try {
       await api.logout();
@@ -144,6 +148,9 @@ export function AuthProvider({ children }) {
         quickLoginAs,
         switchTenant,
         logout,
+        isAuthModalOpen,
+        openAuthModal,
+        closeAuthModal,
         refreshProfile: loadInitialData,
       }}
     >
