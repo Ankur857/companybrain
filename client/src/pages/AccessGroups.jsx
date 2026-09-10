@@ -29,27 +29,27 @@ export function AccessGroups() {
   }, [tenant]);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 max-w-6xl mx-auto pb-10">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-              CLEARANCE GROUPS
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+              Clearance Boundaries
             </span>
             <span className="text-xs text-slate-400 font-mono">{tenant?.name}</span>
           </div>
-          <h1 className="text-2xl font-black text-white tracking-tight flex items-center gap-2">
-            <KeyRound className="w-6 h-6 text-indigo-400" />
+          <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
+            <KeyRound className="w-5 h-5 text-indigo-400" />
             Access Groups & Clearances
           </h1>
-          <p className="text-xs text-slate-400 mt-1">
-            Access groups answer: "Who is allowed to access this data?" Users can belong to multiple groups to retrieve confidential project or department knowledge.
+          <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
+            Access groups answer: "Who is authorized to access this data?" Users inherit membership to retrieve confidential project or department knowledge.
           </p>
         </div>
       </div>
 
       {/* Groups Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {groups.map((grp) => {
           const userIsInGroup = (user?.access_groups || []).some(
             (g) => g.id === grp.id || g.name === grp.name
@@ -58,33 +58,33 @@ export function AccessGroups() {
           return (
             <div
               key={grp.id}
-              className={`p-6 rounded-2xl glass-panel border transition-all flex flex-col justify-between space-y-4 ${
-                userIsInGroup ? 'border-indigo-500/40 bg-indigo-950/10' : 'border-white/10'
+              className={`card-clean p-5 flex flex-col justify-between space-y-4 transition-all ${
+                userIsInGroup ? 'border-indigo-500/30 bg-indigo-950/15' : ''
               }`}
             >
               <div className="space-y-3">
                 <div className="flex items-start justify-between">
-                  <div className="w-10 h-10 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                    <KeyRound className="w-5 h-5" />
+                  <div className="w-9 h-9 rounded-xl bg-slate-900 border border-white/[0.08] flex items-center justify-center text-indigo-400">
+                    <KeyRound className="w-4 h-4" />
                   </div>
                   {userIsInGroup ? (
-                    <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                      <CheckCircle2 className="w-3 h-3" /> YOU ARE A MEMBER
+                    <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-medium">
+                      <CheckCircle2 className="w-3 h-3" /> Member
                     </span>
                   ) : (
-                    <span className="text-[10px] font-mono text-slate-500 bg-slate-900 px-2 py-0.5 rounded border border-white/5">
-                      NOT A MEMBER
+                    <span className="text-[10px] font-mono text-slate-500 bg-slate-900 px-2 py-0.5 rounded-md border border-white/[0.06]">
+                      Not Enrolled
                     </span>
                   )}
                 </div>
 
                 <div>
-                  <h3 className="text-base font-bold text-white">{grp.name}</h3>
-                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">{grp.description || 'Access boundary group.'}</p>
+                  <h3 className="text-sm font-semibold text-white">{grp.name}</h3>
+                  <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">{grp.description || 'Access boundary clearance group.'}</p>
                 </div>
 
                 {/* Members List */}
-                <div className="pt-2 border-t border-white/5 space-y-2">
+                <div className="pt-2 border-t border-white/[0.06] space-y-2">
                   <div className="text-[10px] font-mono text-slate-500 uppercase tracking-wider flex items-center justify-between">
                     <span>Enrolled Members ({grp.membersCount || 0}):</span>
                   </div>
@@ -92,9 +92,9 @@ export function AccessGroups() {
                     {(grp.members || []).map((m) => (
                       <div
                         key={m.id}
-                        className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/60 border border-white/5 text-xs text-slate-300"
+                        className="flex items-center justify-between p-1.5 rounded-lg bg-slate-950/60 border border-white/[0.04] text-xs text-slate-300"
                       >
-                        <span className="font-semibold text-white">{m.name}</span>
+                        <span className="font-medium text-white text-xs">{m.name}</span>
                         <span className="text-[10px] text-slate-400 font-mono">{m.department}</span>
                       </div>
                     ))}

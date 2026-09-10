@@ -2,17 +2,18 @@ import React from 'react';
 import { NavLink } from 'react-router-dom';
 import {
   LayoutDashboard,
-  MessageSquareText,
-  ShieldAlert,
+  MessageSquare,
+  ShieldCheck,
   Building2,
   FileText,
   Network,
   Users,
   KeyRound,
-  ShieldCheck,
+  FileSearch,
   ClipboardList,
   GitFork,
-  Sparkles
+  Sparkles,
+  ShieldAlert
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -20,70 +21,82 @@ export function Sidebar() {
   const { user } = useAuth();
   const isAdmin = ['Company Admin', 'Super Admin'].includes(user?.role_name);
 
-  const navItems = [
-    { to: '/', label: 'Dashboard', icon: LayoutDashboard },
-    { to: '/chat', label: 'AI Assistant', icon: MessageSquareText, highlight: true },
-    { to: '/demo', label: 'Security Demo', icon: ShieldAlert, badge: 'USP Test' },
+  const primaryItems = [
+    { to: '/', label: 'Overview', icon: LayoutDashboard },
+    { to: '/chat', label: 'AI Assistant', icon: MessageSquare, highlight: true },
+    { to: '/demo', label: 'Security Lab', icon: ShieldAlert, badge: 'USP' },
+  ];
+
+  const manageItems = [
     { to: '/companies', label: 'Companies', icon: Building2 },
-    { to: '/knowledge', label: 'Knowledge Sources', icon: FileText },
+    { to: '/knowledge', label: 'Knowledge Base', icon: FileText },
     { to: '/connectors', label: 'Connectors', icon: Network },
     { to: '/users', label: 'Users & Roles', icon: Users, adminOnly: true },
     { to: '/groups', label: 'Access Groups', icon: KeyRound, adminOnly: true },
     { to: '/policies', label: 'Policy Engine', icon: ShieldCheck, adminOnly: true },
-    { to: '/audit', label: 'Audit Logs', icon: ClipboardList },
+    { to: '/audit', label: 'Audit Trail', icon: ClipboardList },
     { to: '/architecture', label: 'Architecture', icon: GitFork },
   ];
 
+  const renderNav = (item) => {
+    if (item.adminOnly && !isAdmin) return null;
+    const Icon = item.icon;
+
+    return (
+      <NavLink
+        key={item.to}
+        to={item.to}
+        className={({ isActive }) =>
+          `flex items-center justify-between px-3 py-2 rounded-lg text-xs font-medium transition-all ${
+            isActive
+              ? 'bg-indigo-600 text-white shadow-sm'
+              : item.highlight
+              ? 'text-indigo-400 hover:bg-indigo-500/10'
+              : 'text-slate-400 hover:text-slate-200 hover:bg-white/[0.04]'
+          }`
+        }
+      >
+        <div className="flex items-center gap-2.5">
+          <Icon className="w-4 h-4 shrink-0" />
+          <span>{item.label}</span>
+        </div>
+        {item.badge && (
+          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-300 font-semibold border border-indigo-500/20">
+            {item.badge}
+          </span>
+        )}
+      </NavLink>
+    );
+  };
+
   return (
-    <aside className="w-64 glass-panel border-r border-white/10 flex flex-col shrink-0 min-h-[calc(100vh-61px)]">
-      <div className="p-4 flex-1 space-y-1">
-        <div className="px-3 py-2 text-[10px] font-mono text-slate-400 uppercase tracking-wider">
-          Enterprise Navigation
+    <aside className="w-60 bg-slate-950/60 border-r border-white/[0.06] flex flex-col shrink-0 min-h-[calc(100vh-53px)]">
+      <div className="p-3 flex-1 space-y-6">
+        {/* Core Actions */}
+        <div className="space-y-1">
+          <div className="px-3 pb-1 text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+            Platform
+          </div>
+          {primaryItems.map(renderNav)}
         </div>
 
-        {navItems.map((item) => {
-          if (item.adminOnly && !isAdmin) return null;
-
-          const Icon = item.icon;
-
-          return (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              className={({ isActive }) =>
-                `flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-medium transition-all ${
-                  isActive
-                    ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
-                    : item.highlight
-                    ? 'bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20 border border-indigo-500/20'
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-white/5'
-                }`
-              }
-            >
-              <div className="flex items-center gap-3">
-                <Icon className="w-4 h-4" />
-                <span>{item.label}</span>
-              </div>
-              {item.badge && (
-                <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 animate-pulse">
-                  {item.badge}
-                </span>
-              )}
-            </NavLink>
-          );
-        })}
+        {/* Management & Governance */}
+        <div className="space-y-1">
+          <div className="px-3 pb-1 text-[10px] font-mono text-slate-500 uppercase tracking-wider">
+            Governance & Data
+          </div>
+          {manageItems.map(renderNav)}
+        </div>
       </div>
 
-      {/* Security Governance Footer Badge */}
-      <div className="p-4 border-t border-white/10">
-        <div className="p-3 rounded-xl bg-slate-900/80 border border-white/5 space-y-2 text-xs">
-          <div className="flex items-center gap-2 text-indigo-400 font-semibold text-[11px]">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>Zero-Trust RAG Rule</span>
+      {/* Clean Bottom Policy Badge */}
+      <div className="p-3 border-t border-white/[0.06]">
+        <div className="p-3 rounded-lg bg-slate-900/60 border border-white/[0.04] text-[11px] text-slate-400 leading-relaxed">
+          <div className="flex items-center gap-1.5 text-indigo-400 font-medium mb-1">
+            <Sparkles className="w-3 h-3" />
+            <span>Zero-Trust Policy</span>
           </div>
-          <p className="text-[11px] text-slate-400 leading-relaxed">
-            The LLM is never the authorization boundary. Context is filtered strictly before external processing.
-          </p>
+          Authorization runs before retrieval. Zero restricted data is exposed to LLM.
         </div>
       </div>
     </aside>

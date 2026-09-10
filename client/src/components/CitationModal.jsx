@@ -20,7 +20,7 @@ export function CitationModal({ documentId, isOpen, onClose }) {
         }
       })
       .catch((err) => {
-        setError(err.message || 'Access to this source was denied.');
+        setError(err.message || 'Access to this source was denied by Policy Engine.');
       })
       .finally(() => setLoading(false));
   }, [isOpen, documentId]);
@@ -29,86 +29,86 @@ export function CitationModal({ documentId, isOpen, onClose }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-      <div className="glass-panel w-full max-w-2xl rounded-2xl shadow-2xl border border-white/10 overflow-hidden flex flex-col max-h-[85vh]">
+      <div className="card-clean w-full max-w-2xl shadow-2xl border border-white/[0.12] overflow-hidden flex flex-col max-h-[85vh]">
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10 bg-slate-900/50">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/[0.06] bg-slate-950/50">
           <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-indigo-400" />
+            <FileText className="w-4 h-4 text-indigo-400" />
             <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
-              Authorized Source Citation
+              Verified Source Citation
             </span>
           </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/5 transition-colors"
+            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-white/[0.06] transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto flex-1">
+        <div className="p-5 overflow-y-auto flex-1 space-y-4">
           {loading && (
             <div className="py-12 text-center text-slate-400">
               <div className="inline-block w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-              <p className="text-sm">Evaluating policy authorization & fetching document...</p>
+              <p className="text-xs font-mono text-slate-400">Evaluating authorization & fetching source...</p>
             </div>
           )}
 
           {error && (
-            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-300 text-sm">
-              <div className="font-semibold mb-1 flex items-center gap-2">
-                <Shield className="w-4 h-4 text-rose-400" /> Policy Guard Blocked
+            <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-rose-300 text-xs space-y-1">
+              <div className="font-semibold flex items-center gap-2">
+                <Shield className="w-4 h-4 text-rose-400" /> Policy Engine Restricted
               </div>
-              <p>{error}</p>
+              <p className="text-slate-400">{error}</p>
             </div>
           )}
 
           {doc && !loading && (
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
                 <div className="flex items-center gap-2 mb-2 flex-wrap">
-                  <SecurityBadge classification={doc.classification} />
-                  <span className="text-xs font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/5">
+                  <SecurityBadge classification={doc.classification} size="xs" />
+                  <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-300">
                     {doc.source_type}
                   </span>
                   {doc.project && (
-                    <span className="text-xs font-mono px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-500/20">
-                      Project: {doc.project}
+                    <span className="text-[11px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                      {doc.project}
                     </span>
                   )}
                 </div>
-                <h3 className="text-xl font-bold text-white">{doc.title}</h3>
+                <h3 className="text-base font-semibold text-white">{doc.title}</h3>
               </div>
 
               {/* Metadata strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3 rounded-xl bg-slate-900/60 border border-white/5 text-xs text-slate-300">
+              <div className="grid grid-cols-3 gap-2 p-3 rounded-xl bg-slate-950/60 border border-white/[0.06] text-xs">
                 <div>
-                  <span className="text-slate-400 block mb-0.5">Department:</span>
-                  <span className="font-medium text-white">{doc.department || 'N/A'}</span>
+                  <span className="text-slate-500 block text-[10px] uppercase">Department:</span>
+                  <span className="font-medium text-slate-200">{doc.department || 'N/A'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block mb-0.5">Owner:</span>
-                  <span className="font-medium text-white">{doc.owner || 'System'}</span>
+                  <span className="text-slate-500 block text-[10px] uppercase">Owner:</span>
+                  <span className="font-medium text-slate-200">{doc.owner || 'System'}</span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block mb-0.5">Version:</span>
-                  <span className="font-medium text-white">{doc.version || '1.0'}</span>
+                  <span className="text-slate-500 block text-[10px] uppercase">Version:</span>
+                  <span className="font-medium text-slate-200">v{doc.version || '1.0'}</span>
                 </div>
               </div>
 
               {/* Document Excerpt */}
               <div>
-                <div className="text-xs font-mono text-slate-400 mb-2 uppercase tracking-wider">
+                <div className="text-[11px] font-mono text-slate-500 mb-1.5 uppercase tracking-wider">
                   Indexed Knowledge Content
                 </div>
-                <div className="p-4 rounded-xl bg-slate-950/80 border border-white/5 font-sans text-sm text-slate-200 leading-relaxed whitespace-pre-wrap max-h-72 overflow-y-auto">
+                <div className="p-4 rounded-xl bg-slate-950/90 border border-white/[0.06] font-sans text-xs text-slate-300 leading-relaxed whitespace-pre-wrap max-h-64 overflow-y-auto">
                   {doc.content}
                 </div>
               </div>
 
               {/* Security indicator */}
-              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-950/30 p-2.5 rounded-lg border border-emerald-500/20">
+              <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/10 p-2.5 rounded-lg border border-emerald-500/20 font-mono text-[11px]">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
                 <span>Pre-retrieval verification passed. User clearance verified before context retrieval.</span>
               </div>
@@ -117,16 +117,18 @@ export function CitationModal({ documentId, isOpen, onClose }) {
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-3 border-t border-white/10 bg-slate-900/40 flex justify-between items-center text-xs text-slate-400">
-          <div>Document ID: <code className="font-mono text-slate-300">{documentId?.slice(0, 13)}...</code></div>
+        <div className="px-5 py-3 border-t border-white/[0.06] bg-slate-950/50 flex justify-between items-center text-xs text-slate-500">
+          <div className="font-mono text-[11px]">
+            Doc ID: <span className="text-slate-400">{documentId?.slice(0, 16)}...</span>
+          </div>
           {doc?.source_url && (
             <a
               href={doc.source_url}
               target="_blank"
               rel="noreferrer"
-              className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors"
+              className="inline-flex items-center gap-1 text-indigo-400 hover:text-indigo-300 transition-colors font-medium text-xs"
             >
-              Open external source <ExternalLink className="w-3.5 h-3.5" />
+              Open raw source <ExternalLink className="w-3.5 h-3.5" />
             </a>
           )}
         </div>

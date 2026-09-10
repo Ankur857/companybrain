@@ -15,10 +15,11 @@ import {
   Bot,
   User,
   ExternalLink,
-  Info,
   Clock,
-  Zap,
-  CornerDownRight
+  ChevronRight,
+  ArrowRight,
+  RotateCcw,
+  SlidersHorizontal
 } from 'lucide-react';
 
 export function AIAssistant() {
@@ -29,12 +30,12 @@ export function AIAssistant() {
   const [messages, setMessages] = useState([]);
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   const [selectedCitationId, setSelectedCitationId] = useState(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
 
   const messagesEndRef = useRef(null);
 
-  // Load RAG history on tenant or user change
   useEffect(() => {
     api.getRAGHistory()
       .then((res) => {
@@ -42,18 +43,16 @@ export function AIAssistant() {
       })
       .catch(console.error);
 
-    // Initial greeting message explaining active clearances
     setMessages([
       {
         id: 'welcome',
         sender: 'assistant',
         text: `Hello ${user?.name}. I am CompanyBrain, your enterprise AI knowledge assistant for ${tenant?.name}.
-Your active clearance:
-• Role: ${user?.role_name}
-• Department: ${user?.department}
-• Access Groups: ${(user?.access_groups || []).map((g) => g.name).join(', ') || 'General'}
 
-Every query you submit is verified against the CompanyBrain Policy Engine BEFORE external AI context assembly. Only knowledge you are cleared to view is retrieved.`,
+You are logged in with **${user?.role_name}** clearance in the **${user?.department}** department.
+Your verified access groups: ${(user?.access_groups || []).map((g) => g.name).join(', ') || 'None'}.
+
+Every question you submit is verified against the CompanyBrain Policy Engine before context is compiled. You will only receive answers sourced from documentation you are authorized to view.`,
         sources: [],
         decision: 'INFO',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -95,7 +94,6 @@ Every query you submit is verified against the CompanyBrain Policy Engine BEFORE
 
       setMessages((prev) => [...prev, assistantMsg]);
 
-      // Refresh history list
       api.getRAGHistory().then((res) => {
         if (res.success) setHistory(res.history || []);
       });
@@ -130,256 +128,221 @@ Every query you submit is verified against the CompanyBrain Policy Engine BEFORE
   ];
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 h-[calc(100vh-130px)]">
-      {/* Left Sidebar: Query History & Clearance Card */}
-      <div className="hidden lg:flex flex-col gap-4 h-full">
-        {/* User Clearance Profile Card */}
-        <div className="p-4 rounded-2xl glass-panel border border-white/10 space-y-3 shrink-0">
-          <div className="flex items-center gap-2 text-xs font-mono text-indigo-400">
-            <Lock className="w-3.5 h-3.5" />
-            <span>AUTHENTICATED CLEARANCE</span>
-          </div>
-          <div>
-            <div className="font-bold text-white text-sm">{user?.name}</div>
-            <div className="text-xs text-slate-400 font-mono">{tenant?.name}</div>
-          </div>
-          <div className="pt-2 border-t border-white/5 space-y-1.5 text-xs text-slate-300">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Role:</span>
-              <span className="font-semibold text-white">{user?.role_name}</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Dept:</span>
-              <span className="font-semibold text-white">{user?.department}</span>
-            </div>
-            <div>
-              <span className="text-slate-400 block mb-1">Access Groups:</span>
-              <div className="flex gap-1 flex-wrap">
-                {(user?.access_groups || []).map((g) => (
-                  <span
-                    key={g.id || g}
-                    className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-950/60 text-indigo-300 border border-indigo-500/20"
-                  >
-                    {g.name || g}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* History List */}
-        <div className="p-4 rounded-2xl glass-panel border border-white/10 flex-1 flex flex-col min-h-0">
-          <div className="flex items-center justify-between mb-3 shrink-0">
-            <h3 className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+    <div className="flex h-[calc(100vh-100px)] max-w-7xl mx-auto gap-6">
+      {/* Collapsible History Drawer */}
+      {showHistory && (
+        <div className="w-72 card-clean p-4 flex flex-col shrink-0 animate-fade-in">
+          <div className="flex items-center justify-between pb-3 border-b border-white/[0.06] mb-3">
+            <span className="text-xs font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
               <History className="w-3.5 h-3.5" />
-              Tenant Query History
-            </h3>
-            <span className="text-[10px] text-slate-500">{history.length}</span>
+              Query History
+            </span>
+            <button
+              onClick={() => setShowHistory(false)}
+              className="text-xs text-slate-500 hover:text-slate-300"
+            >
+              Close
+            </button>
           </div>
 
-          <div className="overflow-y-auto flex-1 space-y-2 pr-1">
+          <div className="overflow-y-auto flex-1 space-y-1.5 pr-1 text-xs">
             {history.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-500">No queries recorded yet.</div>
+              <div className="py-8 text-center text-slate-500">No past queries in this session.</div>
             ) : (
               history.map((h) => (
                 <button
                   key={h.id}
-                  onClick={() => handleSend(h.query)}
-                  className="w-full text-left p-2.5 rounded-xl text-xs hover:bg-white/5 border border-transparent hover:border-white/5 transition-all text-slate-300 group flex items-start gap-2"
+                  onClick={() => {
+                    handleSend(h.query);
+                    setShowHistory(false);
+                  }}
+                  className="w-full text-left p-2.5 rounded-lg hover:bg-white/[0.04] text-slate-300 transition-colors line-clamp-2 leading-relaxed"
                 >
-                  <CornerDownRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 shrink-0 mt-0.5" />
-                  <span className="line-clamp-2 leading-relaxed">{h.query}</span>
+                  {h.query}
                 </button>
               ))
             )}
           </div>
         </div>
-      </div>
+      )}
 
-      {/* Main Chat Interface */}
-      <div className="lg:col-span-3 flex flex-col h-full rounded-2xl glass-panel border border-white/10 overflow-hidden">
-        {/* Chat Header Bar */}
-        <div className="px-6 py-3 border-b border-white/10 bg-slate-900/60 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-              <Bot className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="text-sm font-bold text-white flex items-center gap-2">
-                CompanyBrain Knowledge Retrieval
-                <span className="text-[10px] font-mono px-2 py-0.2 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/30">
-                  SECURE RAG
-                </span>
-              </div>
-              <div className="text-[11px] text-slate-400">
-                Isolated to: <strong className="text-slate-300">{tenant?.name}</strong>
-              </div>
+      {/* Main Conversation Canvas */}
+      <div className="flex-1 card-clean flex flex-col overflow-hidden">
+        {/* Top Chat Subheader */}
+        <div className="px-6 py-3 border-b border-white/[0.06] bg-slate-900/40 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-2.5">
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              className={`p-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+                showHistory
+                  ? 'bg-indigo-600 text-white border-transparent'
+                  : 'bg-slate-900 border-white/[0.06] text-slate-400 hover:text-slate-200'
+              }`}
+              title="Toggle Query History"
+            >
+              <History className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">History</span>
+            </button>
+            <div className="text-xs text-slate-400">
+              Workspace: <strong className="text-slate-200 font-medium">{tenant?.name}</strong>
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center gap-3 text-xs font-mono text-slate-400">
+          <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
             <span className="flex items-center gap-1 text-emerald-400">
-              <Shield className="w-3.5 h-3.5" /> Zero-Leak Guarantee
+              <Shield className="w-3 h-3" /> Zero-Leak Enforced
             </span>
           </div>
         </div>
 
-        {/* Message Log */}
+        {/* Messages Stream */}
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex flex-col ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}
-            >
-              <div className="flex items-center gap-2 mb-1.5 text-xs text-slate-400 px-1">
-                {msg.sender === 'user' ? (
-                  <>
-                    <span className="font-semibold text-white">{user?.name}</span>
-                    <span>• {msg.timestamp}</span>
-                  </>
-                ) : (
-                  <>
-                    <Bot className="w-3.5 h-3.5 text-indigo-400" />
-                    <span className="font-semibold text-indigo-300">CompanyBrain Engine</span>
-                    <span>• {msg.timestamp}</span>
-                  </>
-                )}
-              </div>
-
+          <div className="max-w-3xl mx-auto space-y-6">
+            {messages.map((msg) => (
               <div
-                className={`p-4 rounded-2xl max-w-3xl leading-relaxed text-sm ${
-                  msg.sender === 'user'
-                    ? 'bg-indigo-600 text-white rounded-br-none shadow-lg shadow-indigo-600/20'
-                    : msg.decision === 'DENY'
-                    ? 'bg-rose-950/40 border border-rose-500/30 text-rose-200 rounded-bl-none'
-                    : 'bg-slate-900/90 border border-white/10 text-slate-100 rounded-bl-none shadow-xl'
-                }`}
+                key={msg.id}
+                className={`flex gap-3.5 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
               >
-                {/* Decision Alert Banner if blocked */}
-                {msg.decision === 'DENY' && (
-                  <div className="flex items-center gap-2 mb-3 px-3 py-1.5 rounded-lg bg-rose-500/20 border border-rose-500/30 text-rose-300 font-mono text-xs font-semibold">
-                    <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
-                    <span>PRE-RETRIEVAL POLICY ENGINE: ACCESS DENIED</span>
+                {msg.sender === 'assistant' && (
+                  <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0 mt-0.5">
+                    <Bot className="w-4 h-4" />
                   </div>
                 )}
 
-                <div className="whitespace-pre-wrap">{msg.text}</div>
+                <div className={`space-y-2 max-w-2xl ${msg.sender === 'user' ? 'items-end' : 'items-start'}`}>
+                  {/* Message Bubble */}
+                  <div
+                    className={`p-4 rounded-2xl text-sm leading-relaxed ${
+                      msg.sender === 'user'
+                        ? 'bg-indigo-600 text-white rounded-br-none shadow-sm'
+                        : msg.decision === 'DENY'
+                        ? 'bg-rose-950/30 border border-rose-500/25 text-rose-200 rounded-bl-none'
+                        : 'bg-slate-900/80 border border-white/[0.06] text-slate-200 rounded-bl-none'
+                    }`}
+                  >
+                    {/* Deny Banner */}
+                    {msg.decision === 'DENY' && (
+                      <div className="flex items-center gap-2 mb-2.5 pb-2 border-b border-rose-500/20 text-rose-400 text-xs font-mono font-medium">
+                        <ShieldAlert className="w-4 h-4 shrink-0" />
+                        <span>POLICY ENGINE: RETRIEVAL BLOCKED</span>
+                      </div>
+                    )}
 
-                {/* Security Metrics Strip */}
-                {msg.securityIndicators && (
-                  <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between flex-wrap gap-2 text-[11px] font-mono text-slate-400">
-                    <div className="flex items-center gap-3">
-                      <span className="flex items-center gap-1 text-emerald-400">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        {msg.securityIndicators.authorizedSourcesCount} authorized source(s)
-                      </span>
-                      {msg.securityIndicators.deniedSourcesCount > 0 && (
-                        <span className="text-rose-400">
-                          {msg.securityIndicators.deniedSourcesCount} restricted source(s) shielded
+                    <div className="whitespace-pre-wrap">{msg.text}</div>
+
+                    {/* Source Citation Chips */}
+                    {msg.sources && msg.sources.length > 0 && (
+                      <div className="mt-4 pt-3 border-t border-white/[0.08] space-y-2">
+                        <div className="text-[11px] font-mono text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                          Authorized Citations ({msg.sources.length}):
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {msg.sources.map((src, i) => (
+                            <button
+                              key={src.id || i}
+                              onClick={() => openCitation(src.id)}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-950/80 border border-white/[0.08] hover:border-indigo-500/40 text-left transition-colors group"
+                            >
+                              <span className="text-xs text-slate-300 group-hover:text-indigo-300 font-medium">
+                                {src.title}
+                              </span>
+                              <ExternalLink className="w-3 h-3 text-slate-500 group-hover:text-indigo-400 shrink-0" />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Message Meta Info */}
+                  <div className="flex items-center gap-2 text-[10px] font-mono text-slate-500 px-1">
+                    <span>{msg.timestamp}</span>
+                    {msg.securityIndicators && (
+                      <>
+                        <span>•</span>
+                        <span className="text-emerald-400/80">
+                          {msg.securityIndicators.authorizedSourcesCount} authorized source(s)
                         </span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Clock className="w-3 h-3" />
-                      <span>{msg.securityIndicators.processingTimeMs}ms</span>
-                    </div>
+                        <span>•</span>
+                        <span>{msg.securityIndicators.processingTimeMs}ms</span>
+                      </>
+                    )}
                   </div>
-                )}
+                </div>
 
-                {/* Source Citations */}
-                {msg.sources && msg.sources.length > 0 && (
-                  <div className="mt-4 pt-3 border-t border-white/10 space-y-2">
-                    <div className="text-xs font-mono text-indigo-400 uppercase tracking-wider flex items-center gap-1.5">
-                      <FileText className="w-3.5 h-3.5" />
-                      Verified Source Citations ({msg.sources.length}):
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {msg.sources.map((src, i) => (
-                        <button
-                          key={src.id || i}
-                          onClick={() => openCitation(src.id)}
-                          className="flex items-center justify-between p-2.5 rounded-xl bg-slate-950/70 border border-white/5 hover:border-indigo-500/40 text-left transition-all group"
-                        >
-                          <div className="truncate pr-2">
-                            <div className="font-semibold text-xs text-slate-200 group-hover:text-indigo-300 truncate">
-                              {i + 1}. {src.title}
-                            </div>
-                            <div className="text-[10px] text-slate-400 font-mono">
-                              {src.source_type} • {src.classification}
-                            </div>
-                          </div>
-                          <ExternalLink className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 shrink-0" />
-                        </button>
-                      ))}
-                    </div>
+                {msg.sender === 'user' && (
+                  <div className="w-7 h-7 rounded-lg bg-slate-800 border border-white/10 flex items-center justify-center text-xs font-semibold text-slate-300 shrink-0 mt-0.5">
+                    {user?.name?.[0] || 'U'}
                   </div>
                 )}
               </div>
-            </div>
-          ))}
+            ))}
 
-          {loading && (
-            <div className="flex items-start gap-3">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
-                <Bot className="w-4 h-4" />
+            {loading && (
+              <div className="flex gap-3.5">
+                <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-white/[0.06] text-slate-400 text-xs flex items-center gap-2.5">
+                  <div className="w-3.5 h-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span>Evaluating clearance with Policy Engine & querying authorized sources...</span>
+                </div>
               </div>
-              <div className="p-4 rounded-2xl bg-slate-900/90 border border-white/10 text-slate-300 text-sm flex items-center gap-3">
-                <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                <span>Evaluating clearance with Policy Engine & querying authorized RAG sources...</span>
-              </div>
-            </div>
-          )}
+            )}
 
-          <div ref={messagesEndRef} />
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
-        {/* Bottom Input Area */}
-        <div className="p-4 border-t border-white/10 bg-slate-900/40 space-y-3 shrink-0">
-          {/* Sample Prompts Chips */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
-            <span className="text-slate-400 font-mono text-[10px] uppercase shrink-0">Quick Queries:</span>
-            {samplePrompts.map((p, idx) => (
-              <button
-                key={idx}
-                disabled={loading}
-                onClick={() => handleSend(p.text)}
-                className="px-2.5 py-1 rounded-lg bg-slate-800/70 hover:bg-indigo-600/20 hover:border-indigo-500/40 border border-white/5 text-slate-300 text-xs shrink-0 transition-all"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+        {/* Composer Bottom Area */}
+        <div className="p-4 border-t border-white/[0.06] bg-slate-900/30 space-y-3 shrink-0">
+          <div className="max-w-3xl mx-auto space-y-2.5">
+            {/* Quick Prompts */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+              <span className="text-[10px] font-mono text-slate-500 uppercase shrink-0">Suggestions:</span>
+              {samplePrompts.map((p, idx) => (
+                <button
+                  key={idx}
+                  disabled={loading}
+                  onClick={() => handleSend(p.text)}
+                  className="px-2.5 py-1 rounded-md bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs border border-white/[0.06] hover:border-white/15 transition-colors shrink-0 font-medium"
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
 
-          {/* Text Input Form */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSend();
-            }}
-            className="flex items-center gap-2"
-          >
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder={`Ask a question across authorized knowledge in ${tenant?.name || 'Company'}...`}
-              disabled={loading}
-              className="flex-1 px-4 py-3 rounded-xl bg-slate-950/80 border border-white/10 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-none text-white text-sm transition-all placeholder:text-slate-500"
-            />
-            <button
-              type="submit"
-              disabled={!query.trim() || loading}
-              className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-semibold text-sm flex items-center gap-2 transition-all shadow-lg shadow-indigo-600/25 shrink-0"
+            {/* Input Form */}
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleSend();
+              }}
+              className="flex items-center gap-2"
             >
-              <span>Query</span>
-              <Send className="w-4 h-4" />
-            </button>
-          </form>
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder={`Ask anything across authorized knowledge in ${tenant?.name || 'Company'}...`}
+                disabled={loading}
+                className="flex-1 px-4 py-3 rounded-xl bg-slate-950/90 border border-white/[0.08] focus:border-indigo-500 text-slate-100 text-sm outline-none transition-colors placeholder:text-slate-500"
+              />
+              <button
+                type="submit"
+                disabled={!query.trim() || loading}
+                className="px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-medium text-sm flex items-center gap-2 transition-colors shrink-0 shadow-sm"
+              >
+                <span>Ask</span>
+                <Send className="w-3.5 h-3.5" />
+              </button>
+            </form>
+          </div>
         </div>
       </div>
 
-      {/* Citation Modal */}
+      {/* Citation Inspector Modal */}
       <CitationModal
         documentId={selectedCitationId}
         isOpen={isModalOpen}

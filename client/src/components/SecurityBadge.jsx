@@ -1,31 +1,42 @@
 import React from 'react';
-import { ShieldCheck, Lock, Eye, AlertTriangle } from 'lucide-react';
+import { Shield, Lock, Eye, AlertCircle } from 'lucide-react';
 
 export function SecurityBadge({ classification, size = 'sm' }) {
   const norm = (classification || 'INTERNAL').toUpperCase();
 
-  const styles = {
-    PUBLIC: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/30',
-    INTERNAL: 'bg-blue-500/10 text-blue-400 border-blue-500/30',
-    CONFIDENTIAL: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
-    HIGHLY_CONFIDENTIAL: 'bg-rose-500/10 text-rose-400 border-rose-500/30',
+  const config = {
+    PUBLIC: {
+      bg: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+      icon: Eye,
+      label: 'PUBLIC',
+    },
+    INTERNAL: {
+      bg: 'bg-sky-500/10 text-sky-400 border-sky-500/20',
+      icon: Shield,
+      label: 'INTERNAL',
+    },
+    CONFIDENTIAL: {
+      bg: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
+      icon: Lock,
+      label: 'CONFIDENTIAL',
+    },
+    HIGHLY_CONFIDENTIAL: {
+      bg: 'bg-rose-500/10 text-rose-400 border-rose-500/20',
+      icon: AlertCircle,
+      label: 'RESTRICTED',
+    },
   };
 
-  const icons = {
-    PUBLIC: <Eye className="w-3 h-3" />,
-    INTERNAL: <ShieldCheck className="w-3 h-3" />,
-    CONFIDENTIAL: <Lock className="w-3 h-3" />,
-    HIGHLY_CONFIDENTIAL: <AlertTriangle className="w-3 h-3 text-rose-400" />,
-  };
-
-  const sizeClass = size === 'xs' ? 'text-[10px] px-1.5 py-0.5' : 'text-xs px-2.5 py-1';
+  const style = config[norm] || config.INTERNAL;
+  const Icon = style.icon;
+  const sizeClass = size === 'xs' ? 'text-[10px] px-2 py-0.5' : 'text-xs px-2.5 py-1';
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full font-mono font-medium border ${styles[norm] || styles.INTERNAL} ${sizeClass}`}
+      className={`inline-flex items-center gap-1.5 rounded-md font-medium border tracking-wide uppercase font-mono ${style.bg} ${sizeClass}`}
     >
-      {icons[norm] || icons.INTERNAL}
-      {norm}
+      <Icon className={size === 'xs' ? 'w-2.5 h-2.5' : 'w-3 h-3'} />
+      <span>{style.label}</span>
     </span>
   );
 }

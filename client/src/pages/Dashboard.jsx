@@ -14,237 +14,238 @@ import {
   ArrowRight,
   ShieldAlert,
   Zap,
-  Lock
+  Lock,
+  Clock,
+  ExternalLink
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export function Dashboard() {
   const { user, tenant } = useAuth();
   const [stats, setStats] = useState(null);
+  const [recentAudits, setRecentAudits] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.getDashboardStats()
-      .then((res) => {
-        if (res.success) setStats(res.stats);
+    setLoading(true);
+    Promise.all([
+      api.getDashboardStats(),
+      api.getAuditLogs({ limit: 6 }),
+    ])
+      .then(([statsRes, auditsRes]) => {
+        if (statsRes.success) setStats(statsRes.stats);
+        if (auditsRes.success) setRecentAudits(auditsRes.logs || []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
   }, [tenant]);
 
   return (
-    <div className="space-y-6">
-      {/* Top Banner / Welcome */}
-      <div className="p-6 rounded-2xl glass-panel border border-white/10 relative overflow-hidden">
-        <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-          <div>
-            <div className="flex items-center gap-2 mb-1">
-              <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                ACTIVE TENANT CONTEXT
-              </span>
-              <span className="text-xs text-slate-400 font-mono">ID: {tenant?.id?.slice(0, 8)}...</span>
-            </div>
-            <h1 className="text-2xl lg:text-3xl font-extrabold text-white tracking-tight">
-              {tenant?.name || 'CompanyBrain Enterprise'}
-            </h1>
-            <p className="text-sm text-slate-400 mt-1 max-w-2xl">
-              Secure enterprise AI intelligence layer. Pre-RAG authorization guarantees employees only receive answers grounded in knowledge they are cleared to access.
-            </p>
+    <div className="space-y-8 max-w-7xl mx-auto">
+      {/* Welcome Banner */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-white/[0.06]">
+        <div>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-xs font-mono text-indigo-400">ORGANIZATION WORKSPACE</span>
+            <span className="text-slate-600">•</span>
+            <span className="text-xs font-medium text-slate-300">{tenant?.name}</span>
           </div>
-
-          <div className="flex items-center gap-3">
-            <Link
-              to="/demo"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-indigo-600/25 hover:opacity-95 transition-all"
-            >
-              <ShieldAlert className="w-4 h-4 text-white" />
-              <span>Launch Security Demo</span>
-            </Link>
-            <Link
-              to="/chat"
-              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900 border border-white/10 hover:border-indigo-500/40 text-slate-200 text-xs font-medium transition-all"
-            >
-              <MessageSquare className="w-4 h-4 text-indigo-400" />
-              <span>Ask AI Assistant</span>
-            </Link>
-          </div>
-        </div>
-      </div>
-
-      {/* Security Governance Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="p-4 rounded-xl glass-panel border border-emerald-500/20 bg-emerald-950/20">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-mono mb-2">
-            <span>TENANT ISOLATION</span>
-            <div className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></div>
-          </div>
-          <div className="text-lg font-bold text-emerald-300">ACTIVE</div>
-          <p className="text-[11px] text-slate-400 mt-1">Cross-tenant queries strictly blocked at database query layer.</p>
-        </div>
-
-        <div className="p-4 rounded-xl glass-panel border border-indigo-500/20 bg-indigo-950/20">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-mono mb-2">
-            <span>PRE-RAG POLICY ENGINE</span>
-            <Lock className="w-3.5 h-3.5 text-indigo-400" />
-          </div>
-          <div className="text-lg font-bold text-indigo-300">ENFORCED</div>
-          <p className="text-[11px] text-slate-400 mt-1">Documents verified against user clearance before LLM context is compiled.</p>
-        </div>
-
-        <div className="p-4 rounded-xl glass-panel border border-cyan-500/20 bg-cyan-950/20">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-mono mb-2">
-            <span>AUDIT LOGGING</span>
-            <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-          </div>
-          <div className="text-lg font-bold text-cyan-300">RECORDING</div>
-          <p className="text-[11px] text-slate-400 mt-1">Every ALLOW and DENY query decision is immutably logged for compliance.</p>
-        </div>
-
-        <div className="p-4 rounded-xl glass-panel border border-amber-500/20 bg-amber-950/20">
-          <div className="flex items-center justify-between text-xs text-slate-400 font-mono mb-2">
-            <span>AI INTEGRATION</span>
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-          </div>
-          <div className="text-lg font-bold text-amber-300">
-            {stats?.securityStatus?.aiProvider || 'Backend Protected'}
-          </div>
-          <p className="text-[11px] text-slate-400 mt-1">External API keys remain on backend. Frontend never contacts LLM directly.</p>
-        </div>
-      </div>
-
-      {/* Primary KPI Metrics */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="p-5 rounded-2xl glass-panel border border-white/10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400">
-            <Building2 className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-mono">TENANTS</div>
-            <div className="text-2xl font-bold text-white mt-0.5">{stats?.totalCompanies ?? 3}</div>
-            <div className="text-[11px] text-slate-500">Segmented companies</div>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-2xl glass-panel border border-white/10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-blue-400">
-            <Users className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-mono">ACTIVE USERS</div>
-            <div className="text-2xl font-bold text-white mt-0.5">{stats?.totalUsers ?? 0}</div>
-            <div className="text-[11px] text-slate-500">In this company tenant</div>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-2xl glass-panel border border-white/10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-cyan-500/10 border border-cyan-500/20 flex items-center justify-center text-cyan-400">
-            <Network className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-mono">SOURCES CONNECTED</div>
-            <div className="text-2xl font-bold text-white mt-0.5">
-              {stats?.connectedSources ?? 0} / {stats?.totalSources ?? 0}
-            </div>
-            <div className="text-[11px] text-slate-500">Google Drive, SharePoint, etc.</div>
-          </div>
-        </div>
-
-        <div className="p-5 rounded-2xl glass-panel border border-white/10 flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center text-purple-400">
-            <FileText className="w-6 h-6" />
-          </div>
-          <div>
-            <div className="text-xs text-slate-400 font-mono">INDEXED DOCUMENTS</div>
-            <div className="text-2xl font-bold text-white mt-0.5">{stats?.indexedDocuments ?? 0}</div>
-            <div className="text-[11px] text-slate-500">Common knowledge model</div>
-          </div>
-        </div>
-      </div>
-
-      {/* Query Governance Stats & Quick Links */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Queries Ratio Card */}
-        <div className="p-6 rounded-2xl glass-panel border border-white/10 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <Activity className="w-4 h-4 text-indigo-400" />
-              Query Authorization Activity
-            </h3>
-            <span className="text-xs text-slate-400 font-mono">All Time</span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <div className="p-3 rounded-xl bg-emerald-950/30 border border-emerald-500/20">
-              <div className="flex items-center gap-1.5 text-xs text-emerald-400 font-medium mb-1">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Allowed Queries</span>
-              </div>
-              <div className="text-2xl font-bold text-white">{stats?.allowedQueries ?? 0}</div>
-              <div className="text-[10px] text-slate-400 mt-1">Passed pre-retrieval clearance</div>
-            </div>
-
-            <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/20">
-              <div className="flex items-center gap-1.5 text-xs text-rose-400 font-medium mb-1">
-                <XCircle className="w-4 h-4" />
-                <span>Blocked Queries</span>
-              </div>
-              <div className="text-2xl font-bold text-white">{stats?.deniedQueries ?? 0}</div>
-              <div className="text-[10px] text-slate-400 mt-1">Shielded by Policy Engine</div>
-            </div>
-          </div>
-
-          <div className="pt-2 border-t border-white/5">
-            <Link
-              to="/audit"
-              className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1 transition-colors"
-            >
-              View detailed audit trail <ArrowRight className="w-3.5 h-3.5" />
-            </Link>
-          </div>
-        </div>
-
-        {/* Core Architecture Principle Card */}
-        <div className="lg:col-span-2 p-6 rounded-2xl glass-panel border border-white/10 space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-white flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-indigo-400" />
-              Core Architecture: Zero-Trust Security Pipeline
-            </h3>
-            <Link to="/architecture" className="text-xs text-indigo-400 hover:underline">
-              Full Diagram →
-            </Link>
-          </div>
-
-          <div className="p-4 rounded-xl bg-slate-950/60 border border-white/5 font-mono text-xs text-slate-300 space-y-2">
-            <div className="flex items-center gap-2 text-indigo-400 font-bold">
-              <span>USER QUERY</span>
-              <span>→</span>
-              <span>AUTHENTICATION</span>
-              <span>→</span>
-              <span>TENANT ISOLATION</span>
-              <span>→</span>
-              <span>POLICY ENGINE</span>
-            </div>
-            <div className="text-slate-400 pl-4 border-l-2 border-indigo-500/40">
-              ↳ "Right information. Right person. Right permission."
-              <br />
-              ↳ Unauthorized documents are strictly removed <span className="text-amber-400">BEFORE</span> context assembly.
-            </div>
-            <div className="flex items-center gap-2 text-emerald-400 font-bold">
-              <span>AUTHORIZED CONTEXT ONLY</span>
-              <span>→</span>
-              <span>EXTERNAL RAG / LLM</span>
-              <span>→</span>
-              <span>RESPONSE GUARD</span>
-              <span>→</span>
-              <span>AUDIT LOG</span>
-            </div>
-          </div>
-
-          <p className="text-xs text-slate-400 leading-relaxed">
-            Unlike standard RAG architectures that feed all company documents to an LLM and prompt it to behave, CompanyBrain treats authorization as an immutable backend software boundary. The LLM receives zero unauthorized reference tokens.
+          <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight">
+            Security & Knowledge Intelligence
+          </h1>
+          <p className="text-xs text-slate-400 mt-1 max-w-xl">
+            CompanyBrain isolates enterprise knowledge by company tenant, pre-filters access by policy, and guarantees that models never see unauthorized information.
           </p>
+        </div>
+
+        <div className="flex items-center gap-2.5">
+          <Link
+            to="/chat"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium transition-colors shadow-sm"
+          >
+            <MessageSquare className="w-3.5 h-3.5" />
+            <span>Open AI Assistant</span>
+          </Link>
+          <Link
+            to="/demo"
+            className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 border border-white/[0.08] hover:border-white/20 text-slate-200 text-xs font-medium transition-colors"
+          >
+            <ShieldAlert className="w-3.5 h-3.5 text-indigo-400" />
+            <span>Test Security Lab</span>
+          </Link>
+        </div>
+      </div>
+
+      {/* KPI Stats Grid */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="card-clean p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
+            <span>Documents Indexed</span>
+            <FileText className="w-4 h-4 text-indigo-400" />
+          </div>
+          <div className="text-2xl font-bold text-white">{stats?.indexedDocuments ?? 0}</div>
+          <div className="text-[11px] text-slate-500 mt-1">Common knowledge model</div>
+        </div>
+
+        <div className="card-clean p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
+            <span>Data Sources</span>
+            <Network className="w-4 h-4 text-cyan-400" />
+          </div>
+          <div className="text-2xl font-bold text-white">
+            {stats?.connectedSources ?? 0} <span className="text-xs text-slate-500 font-normal">/ {stats?.totalSources ?? 0}</span>
+          </div>
+          <div className="text-[11px] text-slate-500 mt-1">Connected connectors</div>
+        </div>
+
+        <div className="card-clean p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
+            <span>Active Members</span>
+            <Users className="w-4 h-4 text-blue-400" />
+          </div>
+          <div className="text-2xl font-bold text-white">{stats?.totalUsers ?? 0}</div>
+          <div className="text-[11px] text-slate-500 mt-1">Across {stats?.accessGroupsCount ?? 0} access groups</div>
+        </div>
+
+        <div className="card-clean p-4 flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-400 text-xs mb-2">
+            <span>Queries Protected</span>
+            <ShieldCheck className="w-4 h-4 text-emerald-400" />
+          </div>
+          <div className="text-2xl font-bold text-white">
+            {stats?.queriesTotal ?? 0}
+          </div>
+          <div className="text-[11px] text-emerald-400/80 mt-1 flex items-center gap-1">
+            <span>{stats?.allowedQueries ?? 0} allowed</span>
+            <span>•</span>
+            <span className="text-rose-400/80">{stats?.deniedQueries ?? 0} blocked</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Security Governance & Recent Queries 2-Column Section */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Security Controls Status */}
+        <div className="card-clean p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            <h2 className="text-xs font-semibold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+              <Lock className="w-3.5 h-3.5 text-indigo-400" />
+              Security Architecture
+            </h2>
+            <Link to="/architecture" className="text-[11px] text-indigo-400 hover:text-indigo-300">
+              Pipeline →
+            </Link>
+          </div>
+
+          <div className="space-y-3 text-xs">
+            <div className="p-3 rounded-lg bg-slate-900/70 border border-white/[0.04] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-200">Tenant Isolation</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                  ENFORCED
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Database queries strictly scoped to current tenant. Zero cross-company retrieval.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-900/70 border border-white/[0.04] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-200">Pre-Retrieval Policy Engine</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                  ACTIVE
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Clearance evaluated before RAG assembly. The LLM is never the authorization layer.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-900/70 border border-white/[0.04] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-200">Response Guard & DLP</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/20">
+                  MONITORING
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Citations verified against authorized pool. Prevents leakage of restricted titles.
+              </p>
+            </div>
+
+            <div className="p-3 rounded-lg bg-slate-900/70 border border-white/[0.04] space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-200">AI Model Credentials</span>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-white/10">
+                  BACKEND-ONLY
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                API keys reside exclusively in server memory. Zero client-side API exposure.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Access & Query Audit Log */}
+        <div className="lg:col-span-2 card-clean p-5 space-y-4">
+          <div className="flex items-center justify-between border-b border-white/[0.06] pb-3">
+            <h2 className="text-xs font-semibold text-white uppercase tracking-wider font-mono flex items-center gap-2">
+              <Activity className="w-3.5 h-3.5 text-indigo-400" />
+              Recent Query Decisions
+            </h2>
+            <Link to="/audit" className="text-[11px] text-indigo-400 hover:text-indigo-300">
+              View All Logs →
+            </Link>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="text-slate-500 font-mono text-[10px] uppercase border-b border-white/[0.04]">
+                  <th className="pb-2">User</th>
+                  <th className="pb-2">Query / Action</th>
+                  <th className="pb-2">Policy Decision</th>
+                  <th className="pb-2 text-right">Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/[0.04] text-slate-300">
+                {recentAudits.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" className="py-8 text-center text-slate-500">
+                      No query activity recorded yet.
+                    </td>
+                  </tr>
+                ) : (
+                  recentAudits.map((item) => (
+                    <tr key={item.id} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="py-3 font-medium text-slate-200 whitespace-nowrap">
+                        {item.user_name}
+                      </td>
+                      <td className="py-3 max-w-xs truncate pr-4 text-slate-400">
+                        {item.metadata?.query || item.reason || item.action}
+                      </td>
+                      <td className="py-3 whitespace-nowrap">
+                        {item.decision === 'ALLOW' || item.decision === 'SUCCESS' ? (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-medium">
+                            <CheckCircle2 className="w-3 h-3" /> ALLOW
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 font-medium">
+                            <XCircle className="w-3 h-3" /> DENIED
+                          </span>
+                        )}
+                      </td>
+                      <td className="py-3 text-right text-[10px] font-mono text-slate-500 whitespace-nowrap">
+                        {new Date(item.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
