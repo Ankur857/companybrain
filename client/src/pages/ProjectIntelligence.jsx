@@ -38,6 +38,7 @@ import {
   Archive,
   Plus,
   Folder,
+  Search,
 } from 'lucide-react';
 
 export function ProjectIntelligence() {
@@ -48,6 +49,7 @@ export function ProjectIntelligence() {
 
   const [project, setProject] = useState(null);
   const [authorizedDocs, setAuthorizedDocs] = useState([]);
+  const [docSearch, setDocSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('assistant'); // 'assistant' | 'sources'
   
@@ -199,7 +201,7 @@ Use the quick action buttons above to explore the architecture, services, databa
             documents_consulted: res.documents_consulted || 0,
             securityDetails: {
               level1: 'Project Access Verified',
-              level2: `${res.documents_consulted || 0} Documents Cleared via PolicyEngine`,
+              level2: `${res.documents_consulted || res.sources?.length || res.securityIndicators?.authorizedSourcesCount || (res.success ? 1 : 0)} Documents Cleared via PolicyEngine`,
               execution_time_ms: res.execution_time_ms
             }
           }
@@ -424,6 +426,7 @@ Use the quick action buttons above to explore the architecture, services, databa
           folderName: uploadFolderName.trim() || project?.name || 'Project Docs',
           department: uploadForm.department,
           project: project?.name || 'Project Alpha',
+          projectId: id,
           classification: uploadForm.classification,
           required_groups: [],
           allowed_user_ids: [],
@@ -454,6 +457,7 @@ Use the quick action buttons above to explore the architecture, services, databa
           content: uploadForm.content,
           department: uploadForm.department,
           project: project?.name || 'Project Alpha',
+          projectId: id,
           classification: uploadForm.classification,
           required_groups: [],
           allowed_user_ids: [],
@@ -652,7 +656,9 @@ Use the quick action buttons above to explore the architecture, services, databa
           {/* Quick Metrics */}
           <div className="flex items-center gap-4 bg-slate-950/60 p-4 rounded-xl border border-white/[0.06] shrink-0">
             <div className="text-center px-2">
-              <div className="text-xl font-bold text-white">{authorizedDocs.length}</div>
+              <div className="text-xl font-bold text-white">
+                {authorizedDocs.filter((d) => d.canAccess !== false).length}
+              </div>
               <div className="text-[10px] font-mono text-slate-400 uppercase mt-0.5">Authorized Docs</div>
             </div>
             <div className="h-8 w-px bg-white/[0.08]"></div>
@@ -861,8 +867,8 @@ Use the quick action buttons above to explore the architecture, services, databa
                 </h3>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-[10px] font-mono text-slate-400">
-                  {authorizedDocs.length} Docs
+                <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 px-2 py-0.5 rounded">
+                  {authorizedDocs.filter((d) => d.canAccess !== false).length} Cleared
                 </span>
                 {isAdmin && (
                   <div className="flex items-center gap-1.5">
@@ -897,9 +903,23 @@ Use the quick action buttons above to explore the architecture, services, databa
               </div>
             </div>
 
-            <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
+            <p className="text-[11px] text-slate-400 leading-relaxed mb-2.5">
               These sources have passed Level 1 (Project Membership) and Level 2 (Policy Engine clearance). Answers strictly cite these sources.
             </p>
+
+            {/* Quick Search in Authorized Knowledge */}
+            {authorizedDocs.length > 5 && (
+              <div className="relative mb-2.5">
+                <Search className="w-3 h-3 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={docSearch}
+                  onChange={(e) => setDocSearch(e.target.value)}
+                  placeholder="Filter authorized project files..."
+                  className="w-full pl-7 pr-3 py-1 rounded-lg bg-slate-900/90 border border-white/[0.08] text-[11px] text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                />
+              </div>
+            )}
 
             {/* List */}
             <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -909,41 +929,75 @@ Use the quick action buttons above to explore the architecture, services, databa
                   No documents linked or cleared for your role.
                 </div>
               ) : (
-                authorizedDocs.map((item) => {
-                  const doc = item.document || item;
-                  return (
-                    <div
-                      key={item.document_id || doc.id}
-                      className="p-3 rounded-lg bg-slate-800/60 border border-white/[0.04] hover:border-indigo-500/30 transition-colors group cursor-pointer"
-                      onClick={() => {
-                        handleExecuteUnderstanding(
-                          'chat',
-                          `Summarize the key information from "${doc.title}".`
-                        );
-                      }}
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0 flex-1">
-                          <h4 className="text-xs font-medium text-white truncate group-hover:text-indigo-300 transition-colors">
-                            {doc.title}
-                          </h4>
-                          <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400 mt-1">
-                            <span className="text-indigo-400 uppercase">{doc.source_type}</span>
-                            <span>•</span>
-                            <span className="text-emerald-400">{doc.classification}</span>
-                          </div>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
-                      </div>
+                authorizedDocs
+                  .filter((item) => {
+                    if (!docSearch.trim()) return true;
+                    const q = docSearch.toLowerCase();
+                    const doc = item.document || item;
+                    return (
+                      doc.title?.toLowerCase().includes(q) ||
+                      doc.classification?.toLowerCase().includes(q) ||
+                      doc.source_type?.toLowerCase().includes(q) ||
+                      doc.content?.toLowerCase().includes(q)
+                    );
+                  })
+                  .map((item) => {
+                    const doc = item.document || item;
+                    const isAllowed = item.canAccess !== false;
 
-                      {doc.content && (
-                        <p className="text-[10px] text-slate-400 line-clamp-2 mt-1.5 leading-normal">
-                          {doc.content}
-                        </p>
-                      )}
-                    </div>
-                  );
-                })
+                    return (
+                      <div
+                        key={item.document_id || doc.id}
+                        className={`p-3 rounded-lg border transition-all group ${
+                          isAllowed
+                            ? 'bg-slate-800/60 border-white/[0.04] hover:border-indigo-500/30 cursor-pointer'
+                            : 'bg-slate-900/40 border-rose-900/20 opacity-60 cursor-not-allowed'
+                        }`}
+                        onClick={() => {
+                          if (!isAllowed) {
+                            showToast(item.accessReason || 'Access restricted by policy clearance.', 'error');
+                            return;
+                          }
+                          handleExecuteUnderstanding(
+                            'chat',
+                            `Summarize the key architectural patterns and components described in "${doc.title}".`
+                          );
+                        }}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <h4 className="text-xs font-medium text-white truncate group-hover:text-indigo-300 transition-colors">
+                              {doc.title}
+                            </h4>
+                            <div className="flex items-center gap-1.5 text-[10px] font-mono text-slate-400 mt-1">
+                              <span className="text-indigo-400 uppercase">{doc.source_type}</span>
+                              <span>•</span>
+                              <span className={isAllowed ? 'text-emerald-400' : 'text-amber-400'}>{doc.classification}</span>
+                              <span>•</span>
+                              {isAllowed ? (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/10 text-emerald-300 border border-emerald-500/20 flex items-center gap-1">
+                                  <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
+                                  <span>Access Granted</span>
+                                </span>
+                              ) : (
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-rose-500/10 text-rose-300 border border-rose-500/20 flex items-center gap-1">
+                                  <Lock className="w-2.5 h-2.5 text-rose-400" />
+                                  <span>Restricted</span>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-600 group-hover:text-indigo-400 group-hover:translate-x-0.5 transition-all shrink-0 mt-1" />
+                        </div>
+
+                        {doc.content && (
+                          <p className="text-[10px] text-slate-400 line-clamp-2 mt-1.5 leading-normal">
+                            {doc.content}
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })
               )}
             </div>
 

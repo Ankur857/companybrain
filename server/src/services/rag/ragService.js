@@ -357,21 +357,46 @@ export class RAGService {
 
     const docIds = new Set((knowledgeRows || []).map((k) => k.document_id));
 
-    // Fetch candidate project documents (strictly those attached via project_knowledge, excluding mock documents)
+    const { data: pMembers } = await db.from('project_members').select('user_id').eq('project_id', project_id);
+    const projectMemberUserIds = new Set((pMembers || []).map((m) => m.user_id));
+
+    // Fetch candidate project documents (including attached, matching project, direct user grants, or project member grants)
     const { data: allTenantDocs } = await db.from('documents').select('*').eq('tenant_id', tenantId);
 
     const candidateDocs = (allTenantDocs || []).filter((d) => {
-      if (!docIds.has(d.id)) return false;
       const isMock =
         d.is_demo === true ||
         d.is_mock === true ||
         d.id.startsWith('f1111111-') ||
         d.id.startsWith('f2222222-') ||
         d.id.startsWith('f3333333-');
-      return !isMock;
+      if (isMock) return false;
+
+      const isAttached = docIds.has(d.id);
+      const isProjectMatch =
+        (d.project && (d.project.toLowerCase() === project.name.toLowerCase() || project.name.toLowerCase().includes(d.project.toLowerCase()))) ||
+        d.metadata?.projectId === project_id ||
+        d.metadata?.project_id === project_id;
+      const userHasDirectAccess = Array.isArray(d.metadata?.allowed_user_ids) && d.metadata.allowed_user_ids.includes(user.id);
+      const memberHasAccess = Array.isArray(d.metadata?.allowed_user_ids) && d.metadata.allowed_user_ids.some((uid) => projectMemberUserIds.has(uid));
+      const adminView = ['Company Admin', 'Super Admin'].includes(user.role_name) && Array.isArray(d.metadata?.allowed_user_ids) && d.metadata.allowed_user_ids.length > 0;
+
+      return isAttached || isProjectMatch || userHasDirectAccess || memberHasAccess || adminView;
     });
 
     if (candidateDocs.length === 0) {
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: user.id,
+        user_name: user.name,
+        action: action_type === 'summary' ? 'PROJECT_SUMMARY_GENERATED' : 'PROJECT_QUERY',
+        resource_type: 'PROJECT',
+        resource_id: project_id,
+        decision: 'ALLOW',
+        reason: `Project query on [${project.name}] - 0 documents available.`,
+        metadata: { query, project_name: project.name, action_type },
+      });
+
       return {
         success: true,
         answer: `This project doesn't have any knowledge sources yet.\n\nAn administrator must attach documents or files to **${project.name}** before project intelligence can be generated.`,
@@ -467,6 +492,7 @@ export class RAGService {
       answer: guarded.sanitizedAnswer,
       sources: guarded.sources,
       decision: 'ALLOW',
+      documents_consulted: guarded.sources.length || authorized.length,
       modelUsed: aiResponse.modelUsed,
       tokens: aiResponse.tokens,
       securityIndicators: {

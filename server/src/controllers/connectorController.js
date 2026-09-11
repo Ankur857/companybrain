@@ -356,6 +356,8 @@ export class ConnectorController {
         fileName,
         department,
         project,
+        projectId,
+        project_id,
         classification,
         required_groups,
         allowed_user_ids,
@@ -396,25 +398,49 @@ export class ConnectorController {
 
       await db.from('documents').insert(newDoc);
 
-      // Auto-link document to project in project_knowledge if project is specified
-      if (project && project !== 'Enterprise Knowledge' && project !== 'General') {
-        try {
-          const { data: tenantProjects } = await db.from('projects').select('*').eq('tenant_id', tenantId);
-          const cleanProj = (project || '').trim().toLowerCase();
-          const targetProject = (tenantProjects || []).find(
-            (p) => p.id === project || p.name.toLowerCase() === cleanProj || (p.code && p.code.toLowerCase() === cleanProj)
-          );
-          if (targetProject) {
+      // Auto-link document to target project, user projects, or active tenant projects
+      try {
+        const { data: tenantProjects } = await db.from('projects').select('*').eq('tenant_id', tenantId).eq('status', 'ACTIVE');
+        const cleanProj = (project || '').trim().toLowerCase();
+        let targetProject = (tenantProjects || []).find(
+          (p) => p.id === project || p.name.toLowerCase() === cleanProj || (p.code && p.code.toLowerCase() === cleanProj)
+        );
+        if (!targetProject && (tenantProjects || []).length > 0) {
+          targetProject = tenantProjects[0];
+        }
+
+        const projectIdsToLink = new Set();
+        const explicitId = projectId || project_id;
+        if (explicitId) projectIdsToLink.add(explicitId);
+        if (targetProject) projectIdsToLink.add(targetProject.id);
+
+        if (Array.isArray(allowed_user_ids) && allowed_user_ids.length > 0) {
+          const { data: memberships } = await db
+            .from('project_members')
+            .select('project_id')
+            .in('user_id', allowed_user_ids);
+          (memberships || []).forEach((m) => projectIdsToLink.add(m.project_id));
+        }
+
+        for (const pId of projectIdsToLink) {
+          const { data: existingPk } = await db
+            .from('project_knowledge')
+            .select('*')
+            .eq('project_id', pId)
+            .eq('document_id', newDoc.id)
+            .single();
+
+          if (!existingPk) {
             await db.from('project_knowledge').insert({
               id: crypto.randomUUID(),
-              project_id: targetProject.id,
+              project_id: pId,
               document_id: newDoc.id,
               created_at: new Date().toISOString(),
             });
           }
-        } catch (linkErr) {
-          console.error('Failed to auto-link document to project_knowledge:', linkErr);
         }
+      } catch (linkErr) {
+        console.error('Failed to auto-link document to project_knowledge:', linkErr);
       }
 
       // Audit event
@@ -457,6 +483,8 @@ export class ConnectorController {
         files = [],
         department = 'General',
         project = 'Enterprise Knowledge',
+        projectId,
+        project_id,
         classification = 'INTERNAL',
         required_groups = [],
         allowed_user_ids = []
@@ -509,28 +537,51 @@ export class ConnectorController {
         insertedDocs.push(newDoc);
       }
 
-      // Auto-link folder documents to project in project_knowledge if project is specified
-      const targetProjectStr = (project || cleanFolderName || '').trim();
-      if (targetProjectStr && targetProjectStr !== 'Enterprise Knowledge' && targetProjectStr !== 'General') {
-        try {
-          const { data: tenantProjects } = await db.from('projects').select('*').eq('tenant_id', tenantId);
-          const cleanProj = targetProjectStr.toLowerCase();
-          const targetProject = (tenantProjects || []).find(
-            (p) => p.id === project || p.name.toLowerCase() === cleanProj || (p.code && p.code.toLowerCase() === cleanProj)
-          );
-          if (targetProject) {
-            for (const doc of insertedDocs) {
+      // Auto-link folder documents to target project, user projects, or active tenant projects
+      try {
+        const { data: tenantProjects } = await db.from('projects').select('*').eq('tenant_id', tenantId).eq('status', 'ACTIVE');
+        const targetProjectStr = (project || cleanFolderName || '').trim().toLowerCase();
+        let targetProject = (tenantProjects || []).find(
+          (p) => p.id === project || p.name.toLowerCase() === targetProjectStr || (p.code && p.code.toLowerCase() === targetProjectStr)
+        );
+        if (!targetProject && (tenantProjects || []).length > 0) {
+          targetProject = tenantProjects[0];
+        }
+
+        const projectIdsToLink = new Set();
+        const explicitId = projectId || project_id;
+        if (explicitId) projectIdsToLink.add(explicitId);
+        if (targetProject) projectIdsToLink.add(targetProject.id);
+
+        if (Array.isArray(allowed_user_ids) && allowed_user_ids.length > 0) {
+          const { data: memberships } = await db
+            .from('project_members')
+            .select('project_id')
+            .in('user_id', allowed_user_ids);
+          (memberships || []).forEach((m) => projectIdsToLink.add(m.project_id));
+        }
+
+        for (const doc of insertedDocs) {
+          for (const pId of projectIdsToLink) {
+            const { data: existingPk } = await db
+              .from('project_knowledge')
+              .select('*')
+              .eq('project_id', pId)
+              .eq('document_id', doc.id)
+              .single();
+
+            if (!existingPk) {
               await db.from('project_knowledge').insert({
                 id: crypto.randomUUID(),
-                project_id: targetProject.id,
+                project_id: pId,
                 document_id: doc.id,
                 created_at: new Date().toISOString(),
               });
             }
           }
-        } catch (linkErr) {
-          console.error('Failed to auto-link folder documents to project_knowledge:', linkErr);
         }
+      } catch (linkErr) {
+        console.error('Failed to auto-link folder documents to project_knowledge:', linkErr);
       }
 
       // Log structured audit event

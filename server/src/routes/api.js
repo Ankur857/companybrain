@@ -87,6 +87,8 @@ router.post('/connectors/:id/items/:itemId/access', authenticate, requireAdmin, 
 router.get('/documents', authenticate, DocumentController.getAll);
 router.get('/documents/:id', authenticate, DocumentController.getById);
 router.post('/documents', authenticate, requireAdmin, DocumentController.create);
+router.put('/documents/folder/:folderName/access', authenticate, requireAdmin, DocumentController.updateFolderAccess);
+router.delete('/documents/folder/:folderName', authenticate, requireAdmin, DocumentController.deleteFolder);
 router.put('/documents/:id', authenticate, requireAdmin, DocumentController.update);
 router.delete('/documents/:id', authenticate, requireAdmin, DocumentController.delete);
 

@@ -509,13 +509,37 @@ export class ProjectController {
       const { data: pKnowledge } = await db.from('project_knowledge').select('*').eq('project_id', id);
       const attachedDocIds = new Set((pKnowledge || []).map((k) => k.document_id));
 
+      const { data: pMembers } = await db.from('project_members').select('user_id').eq('project_id', id);
+      const projectMemberUserIds = new Set((pMembers || []).map((m) => m.user_id));
+
       const { data: allDocs } = await db.from('documents').select('*').eq('tenant_id', tenantId);
 
-      // ONLY return documents explicitly attached to this project by the admin, excluding any mock/demo documents
+      // Return documents that are:
+      // 1. Explicitly attached to this project via project_knowledge
+      // 2. OR assigned to this project (d.project matches project.name / code / metadata.projectId)
+      // 3. OR where the admin has explicitly granted access to req.user (d.metadata?.allowed_user_ids?.includes(req.user.id))
+      // 4. OR where admin has given access to any member of this project (allowed_user_ids intersects project members)
+      // 5. OR if req.user is an admin and the document has been given access to any user
+      // Strictly excluding mock/demo documents
       const attachedDocs = (allDocs || []).filter((d) => {
-        if (!attachedDocIds.has(d.id)) return false;
-        const isMock = d.is_demo === true || d.is_mock === true || d.id.startsWith('f1111111-') || d.id.startsWith('f2222222-') || d.id.startsWith('f3333333-');
-        return !isMock;
+        const isMock =
+          d.is_demo === true ||
+          d.is_mock === true ||
+          d.id.startsWith('f1111111-') ||
+          d.id.startsWith('f2222222-') ||
+          d.id.startsWith('f3333333-');
+        if (isMock) return false;
+
+        const isAttached = attachedDocIds.has(d.id);
+        const isProjectMatch =
+          (d.project && (d.project.toLowerCase() === project.name.toLowerCase() || project.name.toLowerCase().includes(d.project.toLowerCase()))) ||
+          d.metadata?.projectId === id ||
+          d.metadata?.project_id === id;
+        const userHasDirectAccess = Array.isArray(d.metadata?.allowed_user_ids) && d.metadata.allowed_user_ids.includes(req.user.id);
+        const memberHasAccess = Array.isArray(d.metadata?.allowed_user_ids) && d.metadata.allowed_user_ids.some((uid) => projectMemberUserIds.has(uid));
+        const adminView = ['Company Admin', 'Super Admin'].includes(req.user.role_name) && Array.isArray(d.metadata?.allowed_user_ids) && d.metadata.allowed_user_ids.length > 0;
+
+        return isAttached || isProjectMatch || userHasDirectAccess || memberHasAccess || adminView;
       });
 
       // Evaluate clearance for current user

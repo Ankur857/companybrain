@@ -186,6 +186,41 @@ export class DocumentController {
 
       await db.from('documents').update(updates).eq('id', id);
 
+      // Auto-associate document with project knowledge so granted files are immediately visible in Project Understanding
+      if (Array.isArray(allowed_user_ids) && allowed_user_ids.length > 0) {
+        const { data: userMemberships } = await db
+          .from('project_members')
+          .select('project_id')
+          .in('user_id', allowed_user_ids);
+
+        const targetProjectIds = new Set((userMemberships || []).map((m) => m.project_id));
+        if (targetProjectIds.size === 0) {
+          const { data: tenantProjects } = await db
+            .from('projects')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('status', 'ACTIVE');
+          (tenantProjects || []).forEach((p) => targetProjectIds.add(p.id));
+        }
+
+        for (const pId of targetProjectIds) {
+          const { data: existingPk } = await db
+            .from('project_knowledge')
+            .select('*')
+            .eq('project_id', pId)
+            .eq('document_id', id)
+            .single();
+
+          if (!existingPk) {
+            await db.from('project_knowledge').insert({
+              project_id: pId,
+              document_id: id,
+              created_at: new Date().toISOString(),
+            });
+          }
+        }
+      }
+
       await AuditService.logEvent({
         tenant_id: tenantId,
         user_id: req.user.id,
@@ -213,8 +248,158 @@ export class DocumentController {
       const { id } = req.params;
       const tenantId = req.user.tenant_id;
 
+      const { data: doc } = await db.from('documents').select('*').eq('id', id).eq('tenant_id', tenantId).single();
+      if (!doc) {
+        return res.status(404).json({ success: false, error: 'Document not found.' });
+      }
+
       await db.from('documents').delete().eq('id', id).eq('tenant_id', tenantId);
-      return res.json({ success: true, message: 'Document deleted from knowledge base.' });
+      await db.from('project_knowledge').delete().eq('document_id', id);
+
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        action: 'DOCUMENT_DELETED',
+        resource_type: 'DOCUMENT',
+        resource_id: doc.title,
+        decision: 'SUCCESS',
+        reason: `Administrator permanently deleted document [${doc.title}] from knowledge base.`,
+      });
+
+      return res.json({ success: true, message: `Document "${doc.title}" deleted successfully.` });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  static async deleteFolder(req, res) {
+    try {
+      const { folderName } = req.params;
+      const tenantId = req.user.tenant_id;
+
+      const { data: allDocs } = await db.from('documents').select('*').eq('tenant_id', tenantId);
+      const toDelete = (allDocs || []).filter((d) => {
+        if (d.metadata?.folderName === folderName) return true;
+        if (d.title && d.title.startsWith(`[${folderName}]`)) return true;
+        return false;
+      });
+
+      if (toDelete.length === 0) {
+        return res.status(404).json({ success: false, error: `Folder "${folderName}" not found.` });
+      }
+
+      for (const d of toDelete) {
+        await db.from('documents').delete().eq('id', d.id).eq('tenant_id', tenantId);
+        await db.from('project_knowledge').delete().eq('document_id', d.id);
+      }
+
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        action: 'FOLDER_DELETED',
+        resource_type: 'FOLDER',
+        resource_id: folderName,
+        decision: 'SUCCESS',
+        reason: `Administrator permanently deleted folder [${folderName}] and ${toDelete.length} child documents.`,
+      });
+
+      return res.json({
+        success: true,
+        message: `Successfully deleted folder "${folderName}" and all ${toDelete.length} document(s).`,
+        deletedCount: toDelete.length,
+      });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  static async updateFolderAccess(req, res) {
+    try {
+      const { folderName } = req.params;
+      const tenantId = req.user.tenant_id;
+      const { classification, required_groups, allowed_user_ids } = req.body;
+
+      const { data: allDocs } = await db.from('documents').select('*').eq('tenant_id', tenantId);
+      const targetDocs = (allDocs || []).filter((d) => {
+        if (d.metadata?.folderName === folderName) return true;
+        if (d.title && d.title.startsWith(`[${folderName}]`)) return true;
+        return false;
+      });
+
+      if (targetDocs.length === 0) {
+        return res.status(404).json({ success: false, error: `Folder "${folderName}" not found.` });
+      }
+
+      const updates = { updated_at: new Date().toISOString() };
+      if (classification) updates.classification = classification;
+      if (Array.isArray(required_groups)) updates.required_groups = required_groups;
+
+      for (const doc of targetDocs) {
+        const docUpdates = { ...updates };
+        if (Array.isArray(allowed_user_ids)) {
+          docUpdates.metadata = {
+            ...(doc.metadata || {}),
+            allowed_user_ids,
+          };
+        }
+        await db.from('documents').update(docUpdates).eq('id', doc.id);
+      }
+
+      // Auto-associate folder documents with project knowledge
+      if (Array.isArray(allowed_user_ids) && allowed_user_ids.length > 0) {
+        const { data: userMemberships } = await db
+          .from('project_members')
+          .select('project_id')
+          .in('user_id', allowed_user_ids);
+
+        const targetProjectIds = new Set((userMemberships || []).map((m) => m.project_id));
+        if (targetProjectIds.size === 0) {
+          const { data: tenantProjects } = await db
+            .from('projects')
+            .select('id')
+            .eq('tenant_id', tenantId)
+            .eq('status', 'ACTIVE');
+          (tenantProjects || []).forEach((p) => targetProjectIds.add(p.id));
+        }
+
+        for (const doc of targetDocs) {
+          for (const pId of targetProjectIds) {
+            const { data: existingPk } = await db
+              .from('project_knowledge')
+              .select('*')
+              .eq('project_id', pId)
+              .eq('document_id', doc.id)
+              .single();
+
+            if (!existingPk) {
+              await db.from('project_knowledge').insert({
+                project_id: pId,
+                document_id: doc.id,
+                created_at: new Date().toISOString(),
+              });
+            }
+          }
+        }
+      }
+
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        action: 'ACCESS_GRANTED',
+        resource_type: 'FOLDER',
+        resource_id: folderName,
+        decision: 'SUCCESS',
+        reason: `Administrator updated access governance for folder [${folderName}] across ${targetDocs.length} documents.`,
+        metadata: { classification, required_groups, allowed_user_ids },
+      });
+
+      return res.json({
+        success: true,
+        message: `Updated access permissions for all ${targetDocs.length} files in folder "${folderName}".`,
+      });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
     }

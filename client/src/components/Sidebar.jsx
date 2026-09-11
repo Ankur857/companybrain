@@ -9,7 +9,8 @@ import {
   ClipboardList,
   Settings,
   Shield,
-  Layers
+  Layers,
+  Link2
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -20,6 +21,7 @@ export function Sidebar() {
   const primaryNav = [
     { to: '/projects', label: 'Projects', icon: FolderKanban },
     { to: '/knowledge', label: 'Knowledge Sources', icon: FileText },
+    { to: '/connectors', label: 'Connectors', icon: Link2 },
   ];
 
   const adminNav = [

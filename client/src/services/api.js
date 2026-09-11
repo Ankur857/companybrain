@@ -84,6 +84,7 @@ export const api = {
   },
   connectSupabase: (data) => request('/connectors/supabase/connect', { method: 'POST', body: JSON.stringify(data) }),
   uploadSupabaseDocument: (data) => request('/connectors/supabase/upload', { method: 'POST', body: JSON.stringify(data) }),
+  uploadSupabaseDoc: (data) => request('/connectors/supabase/upload', { method: 'POST', body: JSON.stringify(data) }),
   uploadSupabaseFolder: (data) => request('/connectors/supabase/upload-folder', { method: 'POST', body: JSON.stringify(data) }),
   connectDevelopment: (data) => request('/connectors/development/connect', { method: 'POST', body: JSON.stringify(data) }),
 
@@ -108,6 +109,8 @@ export const api = {
   createDocument: (data) => request('/documents', { method: 'POST', body: JSON.stringify(data) }),
   updateDocument: (id, data) => request(`/documents/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteDocument: (id) => request(`/documents/${id}`, { method: 'DELETE' }),
+  deleteFolder: (folderName) => request(`/documents/folder/${encodeURIComponent(folderName)}`, { method: 'DELETE' }),
+  updateFolderAccess: (folderName, data) => request(`/documents/folder/${encodeURIComponent(folderName)}/access`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // RAG
   queryRAG: (query, tenantId) =>

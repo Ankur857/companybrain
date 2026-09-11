@@ -27,7 +27,10 @@ import {
   ArrowLeft,
   ChevronRight,
   FileCode,
-  Files
+  Files,
+  Trash2,
+  Globe,
+  UserCheck
 } from 'lucide-react';
 
 export function KnowledgeSources() {
@@ -43,8 +46,10 @@ export function KnowledgeSources() {
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  // Manage Access Drawer State
+  // Manage Access Drawer/Modal State (Supports Document & Folder-wide)
   const [managingDoc, setManagingDoc] = useState(null);
+  const [managingFolder, setManagingFolder] = useState(null);
+  const [userAccessSearch, setUserAccessSearch] = useState('');
   const [docClassification, setDocClassification] = useState('INTERNAL');
   const [availableGroups, setAvailableGroups] = useState([]);
   const [availableUsers, setAvailableUsers] = useState([]);
@@ -102,6 +107,18 @@ export function KnowledgeSources() {
   }, [tenant]);
 
   const filteredDocs = documents.filter((doc) => {
+    // Strictly filter out any mock documents
+    if (
+      doc.is_mock ||
+      doc.is_demo ||
+      doc.id?.startsWith('f1111111-') ||
+      doc.id?.startsWith('f2222222-') ||
+      doc.id?.startsWith('f3333333-') ||
+      doc.title?.includes('CompanyBrain_Demo')
+    ) {
+      return false;
+    }
+
     const matchesSearch =
       doc.title.toLowerCase().includes(search.toLowerCase()) ||
       (doc.department && doc.department.toLowerCase().includes(search.toLowerCase())) ||
@@ -117,12 +134,25 @@ export function KnowledgeSources() {
   const [folderSearch, setFolderSearch] = useState('');
 
   const getDocFolderName = (doc) => {
-    if (doc.metadata?.folderName && doc.metadata.folderName !== 'General' && doc.metadata.folderName !== 'Enterprise Knowledge') {
-      return doc.metadata.folderName;
+    // Exclude mock docs
+    if (doc.is_mock || doc.is_demo || doc.id?.startsWith('f1111111-')) return null;
+
+    let folder = doc.metadata?.folderName;
+    if (folder && folder !== 'General' && folder !== 'Enterprise Knowledge') {
+      if (folder.toLowerCase() === 'project alpha' || folder.toLowerCase() === 'project-alpha') {
+        return null; // Never create a folder called Project Alpha
+      }
+      return folder;
     }
     if (doc.title && doc.title.startsWith('[')) {
       const match = doc.title.match(/^\[(.*?)\]/);
-      if (match) return match[1];
+      if (match) {
+        const titleFolder = match[1].trim();
+        if (titleFolder.toLowerCase() === 'project alpha' || titleFolder.toLowerCase() === 'project-alpha') {
+          return null; // Never create a folder called Project Alpha
+        }
+        return titleFolder;
+      }
     }
     return null;
   };
@@ -194,7 +224,9 @@ export function KnowledgeSources() {
   };
 
   const openManageAccess = async (doc) => {
+    setManagingFolder(null);
     setManagingDoc(doc);
+    setUserAccessSearch('');
     setDocClassification(doc.classification || 'INTERNAL');
     setSelectedGroupIds(new Set(doc.required_group_ids || doc.required_groups || []));
     setSelectedUserIds(new Set(doc.metadata?.allowed_user_ids || []));
@@ -215,25 +247,119 @@ export function KnowledgeSources() {
     }
   };
 
+  const openManageFolderAccess = async (folder) => {
+    setManagingDoc(null);
+    setManagingFolder(folder);
+    setUserAccessSearch('');
+    const firstDoc = folder.files[0];
+    setDocClassification(firstDoc?.classification || 'INTERNAL');
+    setSelectedGroupIds(new Set(firstDoc?.required_group_ids || firstDoc?.required_groups || []));
+    setSelectedUserIds(new Set(firstDoc?.metadata?.allowed_user_ids || []));
+    setLoadingAccessData(true);
+
+    try {
+      const [groupsRes, usersRes] = await Promise.all([
+        api.getGroups(),
+        api.getUsers(),
+      ]);
+      if (groupsRes.success) setAvailableGroups(groupsRes.groups || []);
+      if (usersRes.success) setAvailableUsers(usersRes.users || []);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load groups/users for folder access control.', 'error');
+    } finally {
+      setLoadingAccessData(false);
+    }
+  };
+
+  const applyAccessPreset = (preset) => {
+    if (preset === 'ALL_USERS') {
+      setDocClassification('PUBLIC');
+      setSelectedGroupIds(new Set());
+      setSelectedUserIds(new Set(availableUsers.map((u) => u.id)));
+      showToast('Preset Applied: Accessible to All Users (Company-Wide)', 'info');
+    } else if (preset === 'INTERNAL') {
+      setDocClassification('INTERNAL');
+      setSelectedGroupIds(new Set());
+      setSelectedUserIds(new Set(availableUsers.map((u) => u.id)));
+      showToast('Preset Applied: Internal Company Members', 'info');
+    } else if (preset === 'ENGINEERING') {
+      setDocClassification('CONFIDENTIAL');
+      const engGroup = availableGroups.find((g) => g.name?.toLowerCase().includes('eng'));
+      const nextGroups = new Set();
+      if (engGroup) nextGroups.add(engGroup.name);
+      setSelectedGroupIds(nextGroups);
+      const engUsers = availableUsers.filter((u) => u.department?.toLowerCase() === 'engineering');
+      setSelectedUserIds(new Set(engUsers.map((u) => u.id)));
+      showToast('Preset Applied: Engineering Department Only', 'info');
+    } else if (preset === 'ADMINS') {
+      setDocClassification('HIGHLY_CONFIDENTIAL');
+      const adminGroup = availableGroups.find((g) => g.name?.toLowerCase().includes('admin') || g.name?.toLowerCase().includes('management'));
+      const nextGroups = new Set();
+      if (adminGroup) nextGroups.add(adminGroup.name);
+      setSelectedGroupIds(nextGroups);
+      const adminUsers = availableUsers.filter((u) => ['Company Admin', 'Super Admin', 'Manager'].includes(u.role_name));
+      setSelectedUserIds(new Set(adminUsers.map((u) => u.id)));
+      showToast('Preset Applied: Admins & Management Only', 'info');
+    }
+  };
+
   const handleSaveAccess = async () => {
-    if (!managingDoc) return;
+    if (!managingDoc && !managingFolder) return;
     setSavingAccess(true);
 
     try {
-      await api.updateDocument(managingDoc.id, {
-        classification: docClassification,
-        required_groups: Array.from(selectedGroupIds),
-        allowed_user_ids: Array.from(selectedUserIds),
-      });
-
-      showToast(`Access rules saved for "${managingDoc.title}"!`, 'success');
-      setManagingDoc(null);
+      if (managingFolder) {
+        await api.updateFolderAccess(managingFolder.name, {
+          classification: docClassification,
+          required_groups: Array.from(selectedGroupIds),
+          allowed_user_ids: Array.from(selectedUserIds),
+        });
+        showToast(`Access rules saved for all ${managingFolder.files.length} files in folder "${managingFolder.name}"!`, 'success');
+        setManagingFolder(null);
+      } else {
+        await api.updateDocument(managingDoc.id, {
+          classification: docClassification,
+          required_groups: Array.from(selectedGroupIds),
+          allowed_user_ids: Array.from(selectedUserIds),
+        });
+        showToast(`Access rules saved for "${managingDoc.title}"!`, 'success');
+        setManagingDoc(null);
+      }
       loadDocuments();
     } catch (err) {
       console.error(err);
       showToast(`Failed to update access rules: ${err.message}`, 'error');
     } finally {
       setSavingAccess(false);
+    }
+  };
+
+  const handleDeleteDocument = async (doc) => {
+    const fileName = doc.metadata?.fileName || doc.title;
+    if (!window.confirm(`Are you sure you want to permanently delete document "${fileName}"? This cannot be undone.`)) return;
+    try {
+      await api.deleteDocument(doc.id);
+      showToast(`Document "${fileName}" deleted successfully.`, 'success');
+      loadDocuments();
+    } catch (err) {
+      console.error(err);
+      showToast(`Failed to delete document: ${err.message}`, 'error');
+    }
+  };
+
+  const handleDeleteFolder = async (folder) => {
+    if (!window.confirm(`Are you sure you want to permanently delete folder "${folder.name}" and all ${folder.files.length} document(s) inside it? This cannot be undone.`)) return;
+    try {
+      await api.deleteFolder(folder.name);
+      showToast(`Folder "${folder.name}" and all files deleted successfully.`, 'success');
+      if (currentFolder && currentFolder.name === folder.name) {
+        setCurrentFolder(null);
+      }
+      loadDocuments();
+    } catch (err) {
+      console.error(err);
+      showToast(`Failed to delete folder: ${err.message}`, 'error');
     }
   };
 
@@ -550,7 +676,7 @@ export function KnowledgeSources() {
         <div className="space-y-4">
           {/* Breadcrumb & Folder Header Bar */}
           <div className="card-clean p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-indigo-500/25 bg-slate-900/90 shadow-lg">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
               <button
                 onClick={() => {
                   setCurrentFolder(null);
@@ -575,16 +701,40 @@ export function KnowledgeSources() {
               </div>
             </div>
 
-            {/* In-Folder Search */}
-            <div className="relative w-full sm:w-64">
-              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                value={folderSearch}
-                onChange={(e) => setFolderSearch(e.target.value)}
-                placeholder={`Search within ${activeFolderData.name}...`}
-                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/80 border border-white/[0.08] focus:border-indigo-500 text-xs text-white placeholder-slate-500 outline-none transition-colors"
-              />
+            <div className="flex items-center gap-2.5 flex-wrap">
+              {/* In-Folder Search */}
+              <div className="relative w-full sm:w-56">
+                <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={folderSearch}
+                  onChange={(e) => setFolderSearch(e.target.value)}
+                  placeholder={`Filter files...`}
+                  className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/80 border border-white/[0.08] focus:border-indigo-500 text-xs text-white placeholder-slate-500 outline-none transition-colors"
+                />
+              </div>
+
+              {/* Admin Actions on Current Folder */}
+              {isAdmin && (
+                <>
+                  <button
+                    onClick={() => openManageFolderAccess(activeFolderData)}
+                    className="px-3 py-1.5 rounded-xl bg-emerald-600/20 hover:bg-emerald-600/30 border border-emerald-500/30 text-emerald-300 text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm"
+                    title="Easy Access: Set access permissions for all files in this folder"
+                  >
+                    <ShieldCheck className="w-3.5 h-3.5" />
+                    <span>Folder Access</span>
+                  </button>
+                  <button
+                    onClick={() => handleDeleteFolder(activeFolderData)}
+                    className="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600/30 border border-rose-500/30 text-rose-300 text-xs font-medium flex items-center gap-1.5 transition-all shadow-sm"
+                    title="Delete entire folder and all its files"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Folder</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -638,7 +788,7 @@ export function KnowledgeSources() {
                     </div>
 
                     {/* Status & Actions */}
-                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                    <div className="flex items-center gap-2 shrink-0 self-end sm:self-center flex-wrap">
                       <SecurityBadge classification={file.classification} size="xs" />
 
                       {file.canAccess ? (
@@ -660,13 +810,25 @@ export function KnowledgeSources() {
                       </button>
 
                       {isAdmin && (
-                        <button
-                          onClick={() => openManageAccess(file)}
-                          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-white/[0.08] text-[11px] font-medium flex items-center gap-1 transition-all"
-                        >
-                          <ShieldCheck className="w-3 h-3" />
-                          <span>Access</span>
-                        </button>
+                        <>
+                          <button
+                            onClick={() => openManageAccess(file)}
+                            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-white/[0.08] text-[11px] font-medium flex items-center gap-1 transition-all"
+                            title="Manage Access"
+                          >
+                            <ShieldCheck className="w-3 h-3" />
+                            <span>Access</span>
+                          </button>
+
+                          <button
+                            onClick={() => handleDeleteDocument(file)}
+                            className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-rose-950/40 text-rose-400 hover:text-rose-300 border border-white/[0.08] hover:border-rose-500/30 text-[11px] font-medium flex items-center gap-1 transition-all"
+                            title="Delete Document"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Delete</span>
+                          </button>
+                        </>
                       )}
                     </div>
                   </div>
@@ -751,12 +913,41 @@ export function KnowledgeSources() {
                       </div>
                     </div>
 
-                    <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-amber-400 font-semibold group-hover:text-amber-300">
-                      <span className="flex items-center gap-1">
+                    <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs">
+                      <span className="flex items-center gap-1 text-amber-400 font-semibold group-hover:text-amber-300 transition-colors">
                         <FolderOpen className="w-3.5 h-3.5" />
                         <span>Open Folder</span>
+                        <ChevronRight className="w-3.5 h-3.5 ml-0.5 group-hover:translate-x-0.5 transition-transform" />
                       </span>
-                      <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-300 group-hover:translate-x-0.5 transition-all" />
+
+                      {isAdmin && (
+                        <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openManageFolderAccess(folder);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-slate-950/80 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-white/[0.08] text-[11px] font-medium flex items-center gap-1 transition-all"
+                            title="Easy Access: Set permissions for all files in this folder"
+                          >
+                            <ShieldCheck className="w-3 h-3" />
+                            <span>Access</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteFolder(folder);
+                            }}
+                            className="px-2 py-1 rounded-lg bg-slate-950/80 hover:bg-rose-950/40 text-rose-400 hover:text-rose-300 border border-white/[0.08] hover:border-rose-500/30 text-[11px] font-medium flex items-center gap-1 transition-all"
+                            title="Delete Folder and all contained files"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            <span>Delete</span>
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -838,13 +1029,25 @@ export function KnowledgeSources() {
                         </button>
 
                         {isAdmin && (
-                          <button
-                            onClick={() => openManageAccess(doc)}
-                            className="flex items-center gap-1 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
-                          >
-                            <ShieldCheck className="w-3.5 h-3.5" />
-                            <span>Manage Access</span>
-                          </button>
+                          <>
+                            <button
+                              onClick={() => openManageAccess(doc)}
+                              className="flex items-center gap-1 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                              title="Manage Access"
+                            >
+                              <ShieldCheck className="w-3.5 h-3.5" />
+                              <span>Access</span>
+                            </button>
+
+                            <button
+                              onClick={() => handleDeleteDocument(doc)}
+                              className="flex items-center gap-1 text-xs font-medium text-rose-400 hover:text-rose-300 transition-colors"
+                              title="Delete Document"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          </>
                         )}
                       </div>
 
@@ -865,40 +1068,110 @@ export function KnowledgeSources() {
         onClose={() => setModalOpen(false)}
       />
 
-      {/* Access Governance Modal for Knowledge Base Document */}
-      {managingDoc && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="card-clean w-full max-w-lg p-6 border border-indigo-500/30 shadow-2xl space-y-5 max-h-[90vh] flex flex-col">
+      {/* Access Governance Modal for Knowledge Base Document or Entire Folder */}
+      {(managingDoc || managingFolder) && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm animate-fade-in">
+          <div className="card-clean w-full max-w-xl p-6 border border-indigo-500/30 shadow-2xl space-y-4 max-h-[92vh] flex flex-col">
             <div className="flex items-start justify-between pb-3 border-b border-white/[0.08]">
               <div>
                 <div className="flex items-center gap-2 mb-1">
-                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
-                    Access Governance
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    {managingFolder ? 'FOLDER-WIDE ACCESS' : 'DOCUMENT CLEARANCE'}
                   </span>
                   <span className="text-xs text-slate-400 font-mono">{tenant?.name}</span>
                 </div>
-                <h3 className="text-sm font-bold text-white line-clamp-1">
-                  {managingDoc.title}
+                <h3 className="text-sm font-bold text-white line-clamp-1 flex items-center gap-2">
+                  {managingFolder ? (
+                    <>
+                      <Folder className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>{managingFolder.name}</span>
+                      <span className="text-[11px] font-normal text-slate-400 font-mono">
+                        ({managingFolder.files.length} files)
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4 text-indigo-400 shrink-0" />
+                      <span>{managingDoc.title}</span>
+                    </>
+                  )}
                 </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  {managingFolder
+                    ? 'Configure permissions once and automatically apply them across all documents in this folder.'
+                    : 'Configure access groups, sensitivity clearance, and individual user permissions.'}
+                </p>
               </div>
               <button
-                onClick={() => setManagingDoc(null)}
-                className="p-1 rounded text-slate-400 hover:text-white"
+                onClick={() => {
+                  setManagingDoc(null);
+                  setManagingFolder(null);
+                }}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-white/[0.06] transition-colors"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-4 overflow-y-auto pr-1 flex-1 text-xs">
+              {/* 1-CLICK EASY ACCESS PRESETS */}
+              <div className="space-y-1.5 bg-slate-950/80 p-3 rounded-xl border border-indigo-500/20 shadow-inner">
+                <div className="flex items-center justify-between text-slate-300 font-semibold text-[11px]">
+                  <span className="flex items-center gap-1.5 text-indigo-300">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                    1-Click Access Presets
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono">Instant Assignment</span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => applyAccessPreset('ALL_USERS')}
+                    className="p-2 rounded-lg bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-300 border border-indigo-500/25 font-semibold text-[11px] flex flex-col items-center gap-1 text-center transition-all hover:scale-[1.02]"
+                  >
+                    <Globe className="w-3.5 h-3.5 text-indigo-400" />
+                    <span>All Users</span>
+                    <span className="text-[9px] font-normal text-slate-400">Company-wide</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyAccessPreset('INTERNAL')}
+                    className="p-2 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-300 border border-emerald-500/25 font-semibold text-[11px] flex flex-col items-center gap-1 text-center transition-all hover:scale-[1.02]"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Internal</span>
+                    <span className="text-[9px] font-normal text-slate-400">All Members</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyAccessPreset('ENGINEERING')}
+                    className="p-2 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 border border-amber-500/25 font-semibold text-[11px] flex flex-col items-center gap-1 text-center transition-all hover:scale-[1.02]"
+                  >
+                    <FileCode className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Engineering</span>
+                    <span className="text-[9px] font-normal text-slate-400">Dev Team</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyAccessPreset('ADMINS')}
+                    className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 border border-rose-500/25 font-semibold text-[11px] flex flex-col items-center gap-1 text-center transition-all hover:scale-[1.02]"
+                  >
+                    <Shield className="w-3.5 h-3.5 text-rose-400" />
+                    <span>Admins</span>
+                    <span className="text-[9px] font-normal text-slate-400">Restricted</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Sensitivity Classification */}
               <div className="space-y-1.5">
-                <label className="text-slate-300 font-semibold block">Sensitivity Classification</label>
+                <label className="text-slate-300 font-semibold block">Sensitivity Clearance</label>
                 <div className="grid grid-cols-2 gap-2">
                   {[
-                    { id: 'PUBLIC', label: 'PUBLIC', desc: 'All tenant users' },
-                    { id: 'INTERNAL', label: 'INTERNAL', desc: 'Standard staff clearance' },
-                    { id: 'CONFIDENTIAL', label: 'CONFIDENTIAL', desc: 'Department & team only' },
-                    { id: 'HIGHLY_CONFIDENTIAL', label: 'HIGHLY CONFIDENTIAL', desc: 'Strict required groups only' },
+                    { id: 'PUBLIC', label: 'PUBLIC', desc: 'Accessible by everyone in company' },
+                    { id: 'INTERNAL', label: 'INTERNAL', desc: 'All verified internal employees' },
+                    { id: 'CONFIDENTIAL', label: 'CONFIDENTIAL', desc: 'Specific department & group members' },
+                    { id: 'HIGHLY_CONFIDENTIAL', label: 'HIGHLY CONFIDENTIAL', desc: 'Strict required access group only' },
                   ].map((lvl) => (
                     <button
                       key={lvl.id}
@@ -906,7 +1179,7 @@ export function KnowledgeSources() {
                       onClick={() => setDocClassification(lvl.id)}
                       className={`p-2.5 rounded-xl border text-left transition-all ${
                         docClassification === lvl.id
-                          ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm'
+                          ? 'bg-indigo-600/25 border-indigo-500 text-white shadow-sm ring-1 ring-indigo-500/50'
                           : 'bg-slate-950/60 border-white/[0.06] text-slate-400 hover:text-slate-200'
                       }`}
                     >
@@ -920,7 +1193,7 @@ export function KnowledgeSources() {
               {loadingAccessData ? (
                 <div className="py-8 text-center text-slate-400">
                   <div className="inline-block w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                  <p className="text-[11px] font-mono">Loading groups & users...</p>
+                  <p className="text-[11px] font-mono">Loading access groups & users...</p>
                 </div>
               ) : (
                 <>
@@ -929,13 +1202,13 @@ export function KnowledgeSources() {
                     <div className="flex items-center justify-between">
                       <span className="text-slate-300 font-semibold flex items-center gap-1.5">
                         <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
-                        Required Access Groups
+                        Access Groups Required
                       </span>
                       <span className="text-[10px] font-mono text-slate-500">
                         {selectedGroupIds.size} selected
                       </span>
                     </div>
-                    <div className="space-y-1 bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06] max-h-40 overflow-y-auto">
+                    <div className="space-y-1 bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06] max-h-36 overflow-y-auto">
                       {availableGroups.length === 0 ? (
                         <p className="text-slate-500 text-[11px] p-2">No access groups found.</p>
                       ) : (
@@ -961,9 +1234,9 @@ export function KnowledgeSources() {
                                 }}
                                 className="rounded border-slate-700 text-indigo-600 focus:ring-0"
                               />
-                              <span className="text-slate-200">{grp.name}</span>
+                              <span className="text-slate-200 font-medium">{grp.name}</span>
                               <span className="text-[10px] font-mono text-slate-500 ml-auto">
-                                {grp.description || 'Access group'}
+                                {grp.description || 'Access Group'}
                               </span>
                             </label>
                           );
@@ -977,38 +1250,81 @@ export function KnowledgeSources() {
                     <div className="flex items-center justify-between">
                       <span className="text-slate-300 font-semibold flex items-center gap-1.5">
                         <Users className="w-3.5 h-3.5 text-indigo-400" />
-                        Direct User Clearances
+                        Individual User Clearances
                       </span>
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {selectedUserIds.size} selected
-                      </span>
+                      <div className="flex items-center gap-2 text-[10px] font-mono">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserIds(new Set(availableUsers.map((u) => u.id)))}
+                          className="text-indigo-400 hover:text-indigo-300 underline"
+                        >
+                          Select All ({availableUsers.length})
+                        </button>
+                        <span className="text-slate-600">•</span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedUserIds(new Set())}
+                          className="text-slate-500 hover:text-slate-300 underline"
+                        >
+                          Clear All
+                        </button>
+                        <span className="text-slate-400 font-bold ml-1">
+                          ({selectedUserIds.size} granted)
+                        </span>
+                      </div>
                     </div>
+
+                    {/* Quick user search filter */}
+                    <div className="relative">
+                      <Search className="w-3 h-3 text-slate-500 absolute left-2.5 top-1/2 -translate-y-1/2" />
+                      <input
+                        type="text"
+                        value={userAccessSearch}
+                        onChange={(e) => setUserAccessSearch(e.target.value)}
+                        placeholder="Filter users by name or email..."
+                        className="w-full pl-7 pr-3 py-1 text-xs rounded-lg bg-slate-900 border border-white/[0.08] text-white placeholder:text-slate-500 outline-none focus:border-indigo-500/50"
+                      />
+                    </div>
+
                     <div className="space-y-1 bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06] max-h-40 overflow-y-auto">
                       {availableUsers.length === 0 ? (
                         <p className="text-slate-500 text-[11px] p-2">No users found.</p>
                       ) : (
-                        availableUsers.map((usr) => (
-                          <label
-                            key={usr.id}
-                            className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-white/[0.03] cursor-pointer text-xs"
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedUserIds.has(usr.id)}
-                              onChange={(e) => {
-                                const next = new Set(selectedUserIds);
-                                if (e.target.checked) next.add(usr.id);
-                                else next.delete(usr.id);
-                                setSelectedUserIds(next);
-                              }}
-                              className="rounded border-slate-700 text-indigo-600 focus:ring-0"
-                            />
-                            <span className="text-slate-200">{usr.name}</span>
-                            <span className="text-[10px] font-mono text-slate-500 ml-auto">
-                              {usr.role_name || usr.department || 'Staff'}
-                            </span>
-                          </label>
-                        ))
+                        availableUsers
+                          .filter((usr) => {
+                            if (!userAccessSearch.trim()) return true;
+                            const q = userAccessSearch.toLowerCase();
+                            return (
+                              usr.name?.toLowerCase().includes(q) ||
+                              usr.email?.toLowerCase().includes(q) ||
+                              usr.department?.toLowerCase().includes(q)
+                            );
+                          })
+                          .map((usr) => (
+                            <label
+                              key={usr.id}
+                              className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-white/[0.03] cursor-pointer text-xs"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={selectedUserIds.has(usr.id)}
+                                onChange={(e) => {
+                                  const next = new Set(selectedUserIds);
+                                  if (e.target.checked) next.add(usr.id);
+                                  else next.delete(usr.id);
+                                  setSelectedUserIds(next);
+                                }}
+                                className="rounded border-slate-700 text-indigo-600 focus:ring-0"
+                              />
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-slate-200 font-medium truncate">{usr.name}</span>
+                                <span className="text-[10px] text-slate-500 truncate">({usr.email})</span>
+                              </div>
+                              <span className="text-[10px] font-mono text-slate-500 ml-auto shrink-0">
+                                {usr.department || usr.role_name || 'Member'}
+                              </span>
+                            </label>
+                          ))
                       )}
                     </div>
                   </div>
@@ -1016,23 +1332,33 @@ export function KnowledgeSources() {
               )}
             </div>
 
-            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.08]">
-              <button
-                type="button"
-                onClick={() => setManagingDoc(null)}
-                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveAccess}
-                disabled={savingAccess}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-sm flex items-center gap-2"
-              >
-                <ShieldCheck className="w-4 h-4" />
-                <span>{savingAccess ? 'Saving Access...' : 'Save Access Rules'}</span>
-              </button>
+            <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/[0.08]">
+              <span className="text-[10px] font-mono text-slate-500">
+                {managingFolder
+                  ? `Applies to all ${managingFolder.files.length} files in folder`
+                  : 'Applies immediately via Policy Engine'}
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setManagingDoc(null);
+                    setManagingFolder(null);
+                  }}
+                  className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveAccess}
+                  disabled={savingAccess}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-sm flex items-center gap-2"
+                >
+                  <ShieldCheck className="w-4 h-4" />
+                  <span>{savingAccess ? 'Saving Access...' : managingFolder ? 'Apply to Entire Folder' : 'Save Access Rules'}</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

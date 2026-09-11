@@ -785,7 +785,31 @@ Welcome to **${project.name}**! Here is your step-by-step onboarding roadmap to 
       matchedSources = roadmapDoc ? [roadmapDoc] : (archDoc ? [archDoc] : [authorizedDocuments[0]]);
     } else {
       // Natural language chat Q&A
-      if ((qLower.includes('model') || qLower.includes('schema') || qLower.includes('table')) && schemaDoc) {
+      if (qLower.includes('company brain') || qLower.includes('companybrain')) {
+        const readmeDoc = authorizedDocuments.find((d) => d.title.toLowerCase().includes('readme')) || authorizedDocuments[0];
+        answerText = `**CompanyBrain** is a secure enterprise AI knowledge and intelligence platform designed to connect organizational documentation with AI models while enforcing strict multi-tenant isolation, role-based clearances, and pre-retrieval policy boundaries.
+
+### Core Capabilities:
+• **Pre-RAG Zero-Trust Security**: Unlike standard RAG systems that rely on LLM prompts to suppress confidential data, CompanyBrain evaluates security policies *before* any document is included in the retrieval context.
+• **Strict Multi-Tenant Isolation**: Cryptographic tenant boundaries prevent cross-company data visibility or leakage.
+• **Cloud & Workspace Connectors**: Automated synchronization and recursive folder indexing with Google Drive and Supabase Knowledge Storage.
+• **Project Understanding**: Real-time architectural digests, microservices decomposition, database schemas, and onboarding workflows for engineering teams.
+
+### System Architecture:
+• **Backend Core**: Express.js REST API with JWT authorization, Argon2id hashing, and a centralized Policy Engine.
+• **Data & Persistence**: Multi-tenant PostgreSQL partitions with Row-Level Security (RLS) policies, paired with Redis for rapid token revocation and session caching.
+• **Frontend**: Modern React web client with real-time audit event streaming and intuitive access governance controls.`;
+        matchedSources = readmeDoc ? [readmeDoc] : [];
+      } else if (qLower.includes('project alpha') || (qLower.includes('alpha') && !qLower.includes('company brain'))) {
+        answerText = `**Project Alpha** is an enterprise banking payment processing platform built for ultra-high throughput and event-driven resilience.
+
+### Key Architectural Pillars:
+• **API Gateway**: Manages perimeter ingress, mutual TLS (mTLS) attestation, rate limiting, and JWT validation.
+• **Event-Driven Services**: Decoupled microservices that communicate asynchronously across partitioned event streams.
+• **Persistence & Caching**: PostgreSQL partitioned by \`tenant_id\` with Row-Level Security, alongside Redis for sub-millisecond session validation and token revocation.
+• **Pre-RAG Security**: Accessible strictly to assigned project members with document-level clearance enforced by the Policy Engine.`;
+        matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
+      } else if ((qLower.includes('model') || qLower.includes('schema') || qLower.includes('table')) && schemaDoc) {
         const lines = schemaDoc.content.split('\n');
         const modelNames = lines.filter((l) => l.trim().startsWith('model ')).map((l) => l.trim().split(/\s+/)[1]);
         if (modelNames.length > 0) {
@@ -807,7 +831,7 @@ Welcome to **${project.name}**! Here is your step-by-step onboarding roadmap to 
           answerText = `Based on authorized route document **${routesDoc.title}**:\n\n` + routesDoc.content.slice(0, 800);
         }
         matchedSources = [routesDoc];
-      } else if (qLower.includes('redis')) {
+      } else if (qLower.includes('redis') || qLower.includes('cache')) {
         answerText = `In **${project.name}**, Redis is utilized as a high-performance in-memory cache and session revocation registry.
 It provides sub-millisecond lookup times for:
 1. Token revocation lists and active session validations.
@@ -818,16 +842,51 @@ It provides sub-millisecond lookup times for:
         answerText = `**${project.name}** uses PostgreSQL as its primary transactional database.
 It enforces multi-tenant row-level security (RLS) policies to ensure that records are partitioned strictly by \`tenant_id\`, preventing cross-company data access.`;
         matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
-      } else if (qLower.includes('architecture') || qLower.includes('what is')) {
+      } else if (qLower.includes('architecture') || (qLower.includes('what is') && qLower.includes('alpha'))) {
         answerText = `**${project.name}** is ${project.description || 'an enterprise microservices system'}.
 It follows an event-driven architecture with an API Gateway handling ingress, decoupled services communicating over an event stream, and PostgreSQL/Redis managing persistent and cached state.`;
         matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
       } else {
-        // Excerpt from top matching authorized doc
-        const topDoc = authorizedDocuments[0];
-        answerText = `Based on your authorized project documents for **${project.name}** (${topDoc?.title || 'Project Knowledge'}):\n\n` +
-          (topDoc?.content ? topDoc.content.split('\n').filter((l) => l.trim().length > 15).slice(0, 5).join('\n\n') : 'No content available.');
-        matchedSources = topDoc ? [topDoc] : [];
+        // Find best matching document by query keywords
+        const terms = qLower.split(/\s+/).filter((w) => w.length > 2);
+        let bestDoc = authorizedDocuments[0];
+        let bestScore = -1;
+
+        for (const doc of authorizedDocuments) {
+          let score = 0;
+          const tLower = (doc.title || '').toLowerCase();
+          const cLower = (doc.content || '').toLowerCase();
+          for (const term of terms) {
+            if (tLower.includes(term)) score += 5;
+            if (cLower.includes(term)) score += 1;
+          }
+          if (doc.title.toLowerCase().includes('readme') && score > 0) score += 3;
+          if (score > bestScore) {
+            bestScore = score;
+            bestDoc = doc;
+          }
+        }
+
+        const docTitle = bestDoc?.title || 'Project Knowledge';
+        const docContent = bestDoc?.content || '';
+
+        // Extract meaningful text lines, stripping raw JSON syntax or bracket noise
+        const cleanedLines = docContent
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => {
+            if (l.length < 5) return false;
+            if (l.startsWith('{') || l.startsWith('}') || l.startsWith('],') || l === '],' || l === '{' || l === '}') return false;
+            if (l.startsWith('"name":') || l.startsWith('"version":') || l.startsWith('"scripts":')) return false;
+            return true;
+          });
+
+        const snippetText = cleanedLines.slice(0, 6).join('\n\n');
+
+        answerText = `Based on the authorized documentation for **${project.name}** in **${docTitle}**:\n\n${
+          snippetText || `The authorized document **${docTitle}** covers configuration, services, and operational parameters for this project.`
+        }\n\nAll details are strictly validated through the pre-retrieval zero-trust Policy Engine.`;
+        matchedSources = bestDoc ? [bestDoc] : [];
       }
     }
 
