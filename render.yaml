@@ -9,19 +9,30 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      - key: JWT_SECRET
-        generateValue: true
       - key: PORT
         value: 10000
-      - key: RAG_API_URL
-        value: https://api.openai.com/v1/chat/completions
-      - key: RAG_API_KEY
+      - key: JWT_SECRET
+        generateValue: true
+      # Google Gemini RAG Integration
+      - key: RAG_PROVIDER
+        value: gemini
+      - key: GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: GEMINI_API_KEY
         sync: false
       - key: RAG_MODEL
-        value: gpt-4o-mini
+        value: gemini-3.5-flash
+      - key: RAG_API_KEY
+        sync: false
+      # Supabase Integration
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_ANON_KEY
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      # Optional: Google Drive OAuth Integration
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
         sync: false
