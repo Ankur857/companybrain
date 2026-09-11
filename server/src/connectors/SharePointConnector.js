@@ -1,4 +1,4 @@
-import { BaseConnector } from './BaseConnector.js';
+import { BaseConnector } from './baseConnector.js';
 
 export class SharePointConnector extends BaseConnector {
   constructor(config = {}, account = null, isDevelopmentMode = false) {
