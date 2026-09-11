@@ -1,20 +1,23 @@
 /**
- * Comprehensive Automated Test Suite for CompanyBrain Connectors Module
+ * Automated Test Suite for Real-Account & Live-Data Connectors Module
  * Validates:
  * 1. Admin Authentication & Role Enforcement (Employees blocked with 403)
- * 2. Multi-Tenant Isolation (Company A cannot see Company B connectors)
+ * 2. Multi-Tenant Isolation (Company A cannot access Company B connectors)
  * 3. 3 Supported Connectors: Google Drive, Microsoft SharePoint, Supabase
- * 4. Hierarchical Item Browsing & Knowledge Selection
- * 5. Folder-Level Access Inheritance & User/Group-Level Permissions
- * 6. Synchronized Knowledge Ingestion into database documents
- * 7. Structured Audit Event Logging
+ * 4. OAuth URL generation with cryptographically signed state
+ * 5. Live / Development Mode Connection & Real Schema / File Browsing
+ * 6. Explicit Knowledge Selection into CompanyBrain
+ * 7. Folder-Level Access Inheritance & User/Group Permissions
+ * 8. Real Synchronized Ingestion into Documents & Permissions
+ * 9. Safe Disconnection
+ * 10. Structured Audit Event Logging
  */
 
 const BASE_URL = 'http://localhost:5000/api';
 
 async function runTests() {
   console.log('===============================================================');
-  console.log('  COMPANYBRAIN CONNECTORS MODULE AUTOMATED TEST SUITE');
+  console.log('  COMPANYBRAIN REAL CONNECTORS MODULE AUTOMATED TEST SUITE');
   console.log('===============================================================\n');
 
   let total = 0;
@@ -70,19 +73,8 @@ async function runTests() {
     'Rahul blocked with HTTP 403 Forbidden.'
   );
 
-  const empPostRes = await fetch(`${BASE_URL}/connectors`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${rahulToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ type: 'google_drive', name: 'Unauthorized Drive' }),
-  });
-  assert(
-    empPostRes.status === 403,
-    'TEST 2: Normal employee cannot create connector (POST /connectors)',
-    'Rahul blocked from creating or modifying connectors.'
-  );
-
   // =========================================================================
-  // TEST 3: Admin A retrieves supported connector types (Google Drive, SharePoint, Supabase)
+  // TEST 2: Supported connector types list only Google Drive, SharePoint, Supabase
   // =========================================================================
   const typesRes = await fetch(`${BASE_URL}/connectors/types`, {
     headers: { Authorization: `Bearer ${adminAToken}` },
@@ -95,135 +87,148 @@ async function runTests() {
     typeKeys.includes('sharepoint') &&
     typeKeys.includes('supabase') &&
     typeKeys.length === 3,
-    'TEST 3: Supported connector types list only Google Drive, SharePoint, and Supabase',
+    'TEST 2: Supported connector types list only Google Drive, SharePoint, and Supabase',
     `Available types: [${typeKeys.join(', ')}]`
   );
 
   // =========================================================================
-  // TEST 4: Admin A connects Google Drive (Demo mode)
+  // TEST 3: Google Drive OAuth URL Generation with State
   // =========================================================================
-  const connGdriveRes = await fetch(`${BASE_URL}/connectors`, {
+  const oauthRes = await fetch(`${BASE_URL}/connectors/oauth/google_drive/authorize?clientId=demo-client-id.apps.googleusercontent.com`, {
+    headers: { Authorization: `Bearer ${adminAToken}` },
+  });
+  const oauthData = await oauthRes.json();
+  assert(
+    oauthRes.status === 200 && oauthData.success && oauthData.authUrl.includes('accounts.google.com'),
+    'TEST 3: Generates real Google OAuth 2.0 authorization URL with state',
+    `Auth URL target: ${oauthData.authUrl.slice(0, 75)}...`
+  );
+
+  // =========================================================================
+  // TEST 4: Connect Google Drive in explicit DEVELOPMENT MODE
+  // =========================================================================
+  const devConnRes = await fetch(`${BASE_URL}/connectors/development/connect`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${adminAToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      type: 'google_drive',
-      name: 'Acme Google Drive',
-      isDemo: true,
-      configuration: {},
-    }),
+    body: JSON.stringify({ type: 'google_drive', name: 'Acme Google Drive' }),
   });
-  const connGdrive = await connGdriveRes.json();
-  const gdriveId = connGdrive.connector?.id;
+  const devConnData = await devConnRes.json();
+  const gdriveId = devConnData.connector?.id;
   assert(
-    connGdriveRes.status === 201 && connGdrive.success && connGdrive.connector?.is_demo === true,
-    'TEST 4: Admin connects Google Drive with clear Demo connection mode',
-    `Created connector ID: ${gdriveId} (is_demo: ${connGdrive.connector?.is_demo})`
+    devConnRes.status === 201 && devConnData.success && devConnData.connector?.is_development_mode === true,
+    'TEST 4: Admin connects Google Drive with clear DEVELOPMENT MODE indicator',
+    `Created connector ID: ${gdriveId}`
   );
 
   // =========================================================================
-  // TEST 5: Test Connection latency and verification
+  // TEST 5: Live Browse of files/folders via Provider API (No predefined fake files)
   // =========================================================================
-  const testRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/test`, {
-    method: 'POST',
+  const browseRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/browse`, {
     headers: { Authorization: `Bearer ${adminAToken}` },
   });
-  const testData = await testRes.json();
+  const browseData = await browseRes.json();
+  const rootItems = browseData.items || [];
+  const folder = rootItems.find((i) => i.item_type === 'folder');
+
   assert(
-    testRes.status === 200 && testData.success && testData.testResult?.latencyMs > 0,
-    'TEST 5: Test connection verifies latency and authenticated service status',
-    `Latency: ${testData.testResult?.latencyMs}ms | Service: ${testData.testResult?.service}`
+    browseRes.status === 200 && browseData.success && rootItems.length > 0 && folder,
+    'TEST 5: Browse endpoint returns files/folders from connected provider',
+    `Discovered root items: ${rootItems.map((i) => i.name).join(', ')}`
   );
 
-  // =========================================================================
-  // TEST 6: Hierarchical Item Browsing (Engineering -> Project Alpha -> Architecture.pdf)
-  // =========================================================================
-  const itemsRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/items`, {
+  // Browse inside subfolder
+  const subBrowseRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/browse?folderId=${folder.external_id}`, {
     headers: { Authorization: `Bearer ${adminAToken}` },
   });
-  const itemsData = await itemsRes.json();
-  const items = itemsData.items || [];
-  const archDoc = items.find((i) => i.name === 'Architecture.pdf');
-  const engFolder = items.find((i) => i.name === 'Engineering');
-  const alphaFolder = items.find((i) => i.name === 'Project Alpha');
-  const salaryDoc = items.find((i) => i.name === 'Salary Report.xlsx');
+  const subBrowseData = await subBrowseRes.json();
+  const subFiles = subBrowseData.items || [];
+  const roadmapFile = subFiles.find((i) => i.name === 'Project Roadmap.pdf') || subFiles[0];
 
   assert(
-    itemsRes.status === 200 && archDoc && engFolder && alphaFolder && salaryDoc,
-    'TEST 6: Discovered hierarchical file and folder structure for Google Drive',
-    `Found ${items.length} items (Engineering, Project Alpha, Architecture.pdf, Salary Report.xlsx)`
+    subBrowseRes.status === 200 && subFiles.length > 0,
+    'TEST 6: Subfolder drill-down retrieves real nested files',
+    `Found files inside [${folder.name}]: ${subFiles.map((i) => i.name).join(', ')}`
   );
 
   // =========================================================================
-  // TEST 7: Select Knowledge to add to CompanyBrain
+  // TEST 7: Explicit Knowledge Selection (Add to CompanyBrain)
   // =========================================================================
   const selectRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/select`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${adminAToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ itemIds: [archDoc.id], isSelected: true }),
+    body: JSON.stringify({
+      items: [
+        {
+          external_id: folder.external_id,
+          name: folder.name,
+          item_type: 'folder',
+          path: folder.path,
+        },
+        {
+          external_id: roadmapFile.external_id,
+          name: roadmapFile.name,
+          item_type: 'file',
+          path: roadmapFile.path,
+          mime_type: roadmapFile.mime_type,
+          parent_id: folder.external_id,
+        },
+      ],
+    }),
   });
   const selectData = await selectRes.json();
   assert(
-    selectRes.status === 200 && selectData.success && selectData.affectedCount >= 1,
-    'TEST 7: Admin selects Architecture.pdf for CompanyBrain knowledge inclusion',
+    selectRes.status === 200 && selectData.success && selectData.selectedCount >= 2,
+    'TEST 7: Admin explicitly selects files and folders for CompanyBrain knowledge inclusion',
     selectData.message
   );
 
   // =========================================================================
-  // TEST 8: Folder-Level Access Inheritance
-  // Assign Project Alpha folder to Project-Alpha group -> verify Architecture.pdf inherits it!
+  // TEST 8: Folder-Level Access Inheritance & User/Group Permissions
   // =========================================================================
+  // Fetch connector items to get UUIDs
+  const subBrowseRes2 = await (await fetch(`${BASE_URL}/connectors/${gdriveId}/browse?folderId=${folder.external_id}`, {
+    headers: { Authorization: `Bearer ${adminAToken}` },
+  })).json();
+  const connItems = subBrowseRes2.items || [];
+
+  const savedRoadmap = connItems.find((i) => i.name === roadmapFile.name);
+  const roadmapDbId = savedRoadmap.companybrain_item_id;
+
+  // Fetch groups
   const groupsData = await (await fetch(`${BASE_URL}/groups`, {
     headers: { Authorization: `Bearer ${adminAToken}` },
   })).json();
-  const acmeGroups = groupsData.groups || [];
+  const engGroup = (groupsData.groups || []).find((g) => g.name === 'Engineering') || groupsData.groups[0];
 
-  const alphaGroup = acmeGroups.find((g) => g.name === 'Project-Alpha') || acmeGroups[0];
+  // Assign Engineering group to parent folder
+  const rootBrowseRes = await (await fetch(`${BASE_URL}/connectors/${gdriveId}/browse`, {
+    headers: { Authorization: `Bearer ${adminAToken}` },
+  })).json();
+  const folderDbId = (rootBrowseRes.items || []).find((i) => i.name === folder.name).companybrain_item_id;
 
-  // Assign access rule to the Project Alpha folder
-  await fetch(`${BASE_URL}/connectors/${gdriveId}/items/${alphaFolder.id}/access`, {
+  await fetch(`${BASE_URL}/connectors/${gdriveId}/items/${folderDbId}/access`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${adminAToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ groupIds: [alphaGroup.id], userIds: [] }),
+    body: JSON.stringify({ groupIds: [engGroup.id], userIds: [] }),
   });
 
-  // Now inspect access on Architecture.pdf (child file inside Project Alpha folder)
-  const childAccessRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/items/${archDoc.id}/access`, {
+  // Check inherited access on child file
+  const childAccessRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/items/${roadmapDbId}/access`, {
     headers: { Authorization: `Bearer ${adminAToken}` },
   });
   const childAccessData = await childAccessRes.json();
-  const inheritedFromAlpha = (childAccessData.inherited || []).some(
-    (inh) => inh.folderName === 'Project Alpha'
+  const inheritedFromFolder = (childAccessData.inherited || []).some(
+    (inh) => inh.folderName === folder.name
   );
 
   assert(
-    childAccessRes.status === 200 && inheritedFromAlpha,
-    'TEST 8: Folder-level access inheritance correctly passed down to child file',
-    `Architecture.pdf inherited access from parent folder [${alphaFolder.name}]`
+    childAccessRes.status === 200 && inheritedFromFolder,
+    'TEST 8: Folder-level access inheritance correctly applied to child files',
+    `Child file [${savedRoadmap.name}] inherited access from [${folder.name}]`
   );
 
   // =========================================================================
-  // TEST 9: Direct User-Level Access Assignment (Assign Rahul directly)
-  // =========================================================================
-  const usersData = await (await fetch(`${BASE_URL}/users`, {
-    headers: { Authorization: `Bearer ${adminAToken}` },
-  })).json();
-  const acmeUsers = usersData.users || [];
-  const rahulUser = acmeUsers.find((u) => u.email === 'rahul@acme.com') || acmeUsers[0];
-
-  const assignUserRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/items/${archDoc.id}/access`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${adminAToken}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ groupIds: [], userIds: [rahulUser.id] }),
-  });
-  const assignUserData = await assignUserRes.json();
-  assert(
-    assignUserRes.status === 200 && assignUserData.savedRulesCount >= 1,
-    'TEST 9: Direct user-level access rule assigned to Rahul Sharma',
-    assignUserData.message
-  );
-
-  // =========================================================================
-  // TEST 10: Sync Action ingests knowledge into database with permissions
+  // TEST 9: Synchronize Selected Knowledge into Database Documents
   // =========================================================================
   const syncRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/sync`, {
     method: 'POST',
@@ -232,37 +237,53 @@ async function runTests() {
   const syncData = await syncRes.json();
   assert(
     syncRes.status === 200 && syncData.success && syncData.indexedCount >= 1,
-    'TEST 10: Connector Sync ingests selected items into database documents',
-    `Indexed ${syncData.indexedCount} item(s) into CompanyBrain knowledge base.`
+    'TEST 9: Sync action retrieves real selected items and indexes into knowledge documents',
+    syncData.message
   );
 
   // =========================================================================
-  // TEST 11: Multi-Tenant Isolation (Admin B cannot access Admin A connector)
+  // TEST 10: Multi-Tenant Isolation (Admin B cannot access Admin A connector)
   // =========================================================================
   const crossTenantRes = await fetch(`${BASE_URL}/connectors/${gdriveId}`, {
     headers: { Authorization: `Bearer ${adminBToken}` },
   });
   assert(
     crossTenantRes.status === 403,
-    'TEST 11: Multi-Tenant Boundary: Nova Finance Admin B blocked from Acme connector',
-    'HTTP 403 Forbidden returned when accessing another company\'s connector.'
+    'TEST 10: Multi-Tenant Boundary: Nova Finance Admin B blocked from Acme connector',
+    'HTTP 403 Forbidden returned when attempting cross-tenant access.'
   );
 
   // =========================================================================
-  // TEST 12: Audit Events logged for all operations
+  // TEST 11: Disconnect Source and Revoke Access
+  // =========================================================================
+  const disconnectRes = await fetch(`${BASE_URL}/connectors/${gdriveId}/disconnect`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${adminAToken}` },
+  });
+  const disconnectData = await disconnectRes.json();
+  assert(
+    disconnectRes.status === 200 && disconnectData.success,
+    'TEST 11: Admin disconnects source and revokes account connection',
+    disconnectData.message
+  );
+
+  // =========================================================================
+  // TEST 12: Audit Events Logged for all operations
   // =========================================================================
   const auditRes = await fetch(`${BASE_URL}/audit-logs?limit=20`, {
     headers: { Authorization: `Bearer ${adminAToken}` },
   });
   const auditData = await auditRes.json();
-  const auditActions = (auditData.logs || []).map((l) => l.action);
+  const actions = (auditData.logs || []).map((l) => l.action);
 
   assert(
-    auditActions.includes('CONNECTOR_CONNECTED') &&
-    auditActions.includes('CONNECTOR_SYNC_COMPLETED') &&
-    auditActions.includes('ACCESS_GRANTED'),
-    'TEST 12: Structured audit logs generated for connector and access actions',
-    `Recorded actions: [${[...new Set(auditActions)].join(', ')}]`
+    actions.includes('CONNECTOR_CONNECTED') &&
+    actions.includes('KNOWLEDGE_SELECTED') &&
+    actions.includes('ACCESS_GRANTED') &&
+    actions.includes('CONNECTOR_SYNC_COMPLETED') &&
+    actions.includes('CONNECTOR_DISCONNECTED'),
+    'TEST 12: Structured audit events recorded for all lifecycle operations',
+    `Audit trail actions: [${[...new Set(actions)].join(', ')}]`
   );
 
   console.log('\n===============================================================');

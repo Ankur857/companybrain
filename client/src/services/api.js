@@ -69,20 +69,36 @@ export const api = {
   getConnectors: () => request('/connectors'),
   getConnector: (id) => request(`/connectors/${id}`),
   getConnectorTypes: () => request('/connectors/types'),
-  createConnector: (data) => request('/connectors', { method: 'POST', body: JSON.stringify(data) }),
   testConnector: (id) => request(`/connectors/${id}/test`, { method: 'POST' }),
   syncConnector: (id) => request(`/connectors/${id}/sync`, { method: 'POST' }),
   disconnectConnector: (id) => request(`/connectors/${id}/disconnect`, { method: 'POST' }),
   deleteConnector: (id) => request(`/connectors/${id}`, { method: 'DELETE' }),
-  getConnectorItems: (id) => request(`/connectors/${id}/items`),
-  getConnectorItem: (id, itemId) => request(`/connectors/${id}/items/${itemId}`),
-  selectConnectorItems: (id, itemIds, isSelected) =>
-    request(`/connectors/${id}/select`, { method: 'POST', body: JSON.stringify({ itemIds, isSelected }) }),
+
+  // Real Account OAuth & Live Connection
+  getOAuthUrl: (provider, params = {}) => {
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([_, v]) => v !== undefined && v !== null && v !== '' && v !== 'undefined')
+    );
+    const q = new URLSearchParams(cleanParams).toString();
+    return request(`/connectors/oauth/${provider}/authorize${q ? `?${q}` : ''}`);
+  },
+  connectSupabase: (data) => request('/connectors/supabase/connect', { method: 'POST', body: JSON.stringify(data) }),
+  connectDevelopment: (data) => request('/connectors/development/connect', { method: 'POST', body: JSON.stringify(data) }),
+
+  // Live Browsing & Knowledge Selection
+  browseConnector: (id, params = {}) => {
+    const cleanParams = Object.fromEntries(
+      Object.entries(params).filter(([_, v]) => v !== undefined && v !== null && v !== '' && v !== 'undefined')
+    );
+    const q = new URLSearchParams(cleanParams).toString();
+    return request(`/connectors/${id}/browse${q ? `?${q}` : ''}`);
+  },
+  selectKnowledge: (id, items) => request(`/connectors/${id}/select`, { method: 'POST', body: JSON.stringify({ items }) }),
+
+  // Access Governance
   getItemAccess: (id, itemId) => request(`/connectors/${id}/items/${itemId}/access`),
   saveItemAccess: (id, itemId, data) =>
     request(`/connectors/${id}/items/${itemId}/access`, { method: 'POST', body: JSON.stringify(data) }),
-  removeItemAccess: (id, itemId, accessId) =>
-    request(`/connectors/${id}/items/${itemId}/access/${accessId}`, { method: 'DELETE' }),
 
   // Documents
   getDocuments: () => request('/documents'),

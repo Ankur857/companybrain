@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import { api } from '../services/api';
 import { SecurityBadge } from '../components/SecurityBadge';
 import { CitationModal } from '../components/CitationModal';
@@ -10,14 +11,21 @@ import {
   Lock,
   ExternalLink,
   Shield,
+  ShieldCheck,
+  KeyRound,
+  Users,
   Eye,
   FolderGit2,
   Building,
-  Sparkles
+  Sparkles,
+  X
 } from 'lucide-react';
 
 export function KnowledgeSources() {
   const { user, tenant } = useAuth();
+  const { showToast } = useToast();
+  const isAdmin = ['Company Admin', 'Super Admin'].includes(user?.role_name);
+
   const [documents, setDocuments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -25,7 +33,17 @@ export function KnowledgeSources() {
   const [selectedDocId, setSelectedDocId] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
 
-  useEffect(() => {
+  // Manage Access Drawer State
+  const [managingDoc, setManagingDoc] = useState(null);
+  const [availableGroups, setAvailableGroups] = useState([]);
+  const [availableUsers, setAvailableUsers] = useState([]);
+  const [selectedGroupIds, setSelectedGroupIds] = useState(new Set());
+  const [selectedUserIds, setSelectedUserIds] = useState(new Set());
+  const [docClassification, setDocClassification] = useState('INTERNAL');
+  const [savingAccess, setSavingAccess] = useState(false);
+  const [loadingAccessData, setLoadingAccessData] = useState(false);
+
+  const loadDocuments = () => {
     setLoading(true);
     api.getDocuments()
       .then((res) => {
@@ -33,6 +51,10 @@ export function KnowledgeSources() {
       })
       .catch(console.error)
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadDocuments();
   }, [tenant]);
 
   const filteredDocs = documents.filter((doc) => {
@@ -50,6 +72,50 @@ export function KnowledgeSources() {
   const openDoc = (doc) => {
     setSelectedDocId(doc.id);
     setModalOpen(true);
+  };
+
+  const openManageAccess = async (doc) => {
+    setManagingDoc(doc);
+    setDocClassification(doc.classification || 'INTERNAL');
+    setSelectedGroupIds(new Set(doc.required_groups || []));
+    setSelectedUserIds(new Set(doc.metadata?.allowed_user_ids || []));
+    setLoadingAccessData(true);
+
+    try {
+      const [groupsRes, usersRes] = await Promise.all([
+        api.getGroups(),
+        api.getUsers(),
+      ]);
+      if (groupsRes.success) setAvailableGroups(groupsRes.groups || []);
+      if (usersRes.success) setAvailableUsers(usersRes.users || []);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load groups/users for access control.', 'error');
+    } finally {
+      setLoadingAccessData(false);
+    }
+  };
+
+  const handleSaveAccess = async () => {
+    if (!managingDoc) return;
+    setSavingAccess(true);
+
+    try {
+      await api.updateDocument(managingDoc.id, {
+        classification: docClassification,
+        required_groups: Array.from(selectedGroupIds),
+        allowed_user_ids: Array.from(selectedUserIds),
+      });
+
+      showToast(`Access rules saved for "${managingDoc.title}"!`, 'success');
+      setManagingDoc(null);
+      loadDocuments();
+    } catch (err) {
+      console.error(err);
+      showToast(`Failed to update access rules: ${err.message}`, 'error');
+    } finally {
+      setSavingAccess(false);
+    }
   };
 
   return (
@@ -177,13 +243,25 @@ export function KnowledgeSources() {
                 </div>
 
                 <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                  <button
-                    onClick={() => openDoc(doc)}
-                    className="flex items-center gap-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
-                  >
-                    <Eye className="w-3.5 h-3.5" />
-                    <span>{doc.canAccess ? 'View Source Details' : 'View Access Policy'}</span>
-                  </button>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => openDoc(doc)}
+                      className="flex items-center gap-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+                    >
+                      <Eye className="w-3.5 h-3.5" />
+                      <span>{doc.canAccess ? 'View Source' : 'View Policy'}</span>
+                    </button>
+
+                    {isAdmin && (
+                      <button
+                        onClick={() => openManageAccess(doc)}
+                        className="flex items-center gap-1 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5" />
+                        <span>Manage Access</span>
+                      </button>
+                    )}
+                  </div>
 
                   <span className="text-[10px] font-mono text-slate-500">v{doc.version || '1.0'}</span>
                 </div>
@@ -199,6 +277,179 @@ export function KnowledgeSources() {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
       />
+
+      {/* Access Governance Modal for Knowledge Base Document */}
+      {managingDoc && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="card-clean w-full max-w-lg p-6 border border-indigo-500/30 shadow-2xl space-y-5 max-h-[90vh] flex flex-col">
+            <div className="flex items-start justify-between pb-3 border-b border-white/[0.08]">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                    Access Governance
+                  </span>
+                  <span className="text-xs text-slate-400 font-mono">{tenant?.name}</span>
+                </div>
+                <h3 className="text-sm font-bold text-white line-clamp-1">
+                  {managingDoc.title}
+                </h3>
+              </div>
+              <button
+                onClick={() => setManagingDoc(null)}
+                className="p-1 rounded text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="space-y-4 overflow-y-auto pr-1 flex-1 text-xs">
+              {/* Sensitivity Classification */}
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-semibold block">Sensitivity Classification</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { id: 'PUBLIC', label: 'PUBLIC', desc: 'All tenant users' },
+                    { id: 'INTERNAL', label: 'INTERNAL', desc: 'Standard staff clearance' },
+                    { id: 'CONFIDENTIAL', label: 'CONFIDENTIAL', desc: 'Department & team only' },
+                    { id: 'HIGHLY_CONFIDENTIAL', label: 'HIGHLY CONFIDENTIAL', desc: 'Strict required groups only' },
+                  ].map((lvl) => (
+                    <button
+                      key={lvl.id}
+                      type="button"
+                      onClick={() => setDocClassification(lvl.id)}
+                      className={`p-2.5 rounded-xl border text-left transition-all ${
+                        docClassification === lvl.id
+                          ? 'bg-indigo-600/20 border-indigo-500 text-white shadow-sm'
+                          : 'bg-slate-950/60 border-white/[0.06] text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <div className="font-semibold text-[11px]">{lvl.label}</div>
+                      <div className="text-[10px] text-slate-500 mt-0.5">{lvl.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {loadingAccessData ? (
+                <div className="py-8 text-center text-slate-400">
+                  <div className="inline-block w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                  <p className="text-[11px] font-mono">Loading groups & users...</p>
+                </div>
+              ) : (
+                <>
+                  {/* Required Access Groups */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                        <KeyRound className="w-3.5 h-3.5 text-indigo-400" />
+                        Required Access Groups
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {selectedGroupIds.size} selected
+                      </span>
+                    </div>
+                    <div className="space-y-1 bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06] max-h-40 overflow-y-auto">
+                      {availableGroups.length === 0 ? (
+                        <p className="text-slate-500 text-[11px] p-2">No access groups found.</p>
+                      ) : (
+                        availableGroups.map((grp) => {
+                          const isChecked = selectedGroupIds.has(grp.name) || selectedGroupIds.has(grp.id);
+                          return (
+                            <label
+                              key={grp.id}
+                              className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-white/[0.03] cursor-pointer text-xs"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const next = new Set(selectedGroupIds);
+                                  if (e.target.checked) {
+                                    next.add(grp.name);
+                                  } else {
+                                    next.delete(grp.name);
+                                    next.delete(grp.id);
+                                  }
+                                  setSelectedGroupIds(next);
+                                }}
+                                className="rounded border-slate-700 text-indigo-600 focus:ring-0"
+                              />
+                              <span className="text-slate-200">{grp.name}</span>
+                              <span className="text-[10px] font-mono text-slate-500 ml-auto">
+                                {grp.description || 'Access group'}
+                              </span>
+                            </label>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Direct Allowed Users */}
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-slate-300 font-semibold flex items-center gap-1.5">
+                        <Users className="w-3.5 h-3.5 text-indigo-400" />
+                        Direct User Clearances
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {selectedUserIds.size} selected
+                      </span>
+                    </div>
+                    <div className="space-y-1 bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06] max-h-40 overflow-y-auto">
+                      {availableUsers.length === 0 ? (
+                        <p className="text-slate-500 text-[11px] p-2">No users found.</p>
+                      ) : (
+                        availableUsers.map((usr) => (
+                          <label
+                            key={usr.id}
+                            className="flex items-center gap-2.5 p-1.5 rounded-lg hover:bg-white/[0.03] cursor-pointer text-xs"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selectedUserIds.has(usr.id)}
+                              onChange={(e) => {
+                                const next = new Set(selectedUserIds);
+                                if (e.target.checked) next.add(usr.id);
+                                else next.delete(usr.id);
+                                setSelectedUserIds(next);
+                              }}
+                              className="rounded border-slate-700 text-indigo-600 focus:ring-0"
+                            />
+                            <span className="text-slate-200">{usr.name}</span>
+                            <span className="text-[10px] font-mono text-slate-500 ml-auto">
+                              {usr.role_name || usr.department || 'Staff'}
+                            </span>
+                          </label>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.08]">
+              <button
+                type="button"
+                onClick={() => setManagingDoc(null)}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAccess}
+                disabled={savingAccess}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold transition-all shadow-sm flex items-center gap-2"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                <span>{savingAccess ? 'Saving Access...' : 'Save Access Rules'}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

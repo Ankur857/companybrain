@@ -74,7 +74,21 @@ CREATE TABLE IF NOT EXISTS connectors (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6b. CONNECTOR ITEMS (Discovered & Selected Files/Folders/Tables)
+-- 6b. CONNECTOR ACCOUNTS (Authenticated OAuth Accounts & Credentials - Backend Only)
+CREATE TABLE IF NOT EXISTS connector_accounts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    connector_id UUID NOT NULL REFERENCES connectors(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    provider_account_id VARCHAR(255),
+    account_email VARCHAR(255) NOT NULL,
+    account_name VARCHAR(255),
+    credential_reference JSONB DEFAULT '{}'::jsonb, -- Secure encrypted access/refresh tokens
+    metadata JSONB DEFAULT '{}'::jsonb,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6c. CONNECTOR ITEMS (Selected Knowledge Files/Folders/Tables)
 CREATE TABLE IF NOT EXISTS connector_items (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     connector_id UUID NOT NULL REFERENCES connectors(id) ON DELETE CASCADE,
@@ -86,6 +100,7 @@ CREATE TABLE IF NOT EXISTS connector_items (
     path VARCHAR(1000) NOT NULL,
     source_type VARCHAR(100) NOT NULL, -- google_drive, sharepoint, supabase
     mime_type VARCHAR(255),
+    source_url VARCHAR(1000),
     metadata JSONB DEFAULT '{}'::jsonb,
     is_selected BOOLEAN DEFAULT FALSE,
     sync_status VARCHAR(50) DEFAULT 'PENDING', -- PENDING, SYNCED, ERROR
@@ -93,7 +108,7 @@ CREATE TABLE IF NOT EXISTS connector_items (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- 6c. CONNECTOR ACCESS RULES (User & Group Level Permissions with Folder Inheritance)
+-- 6d. CONNECTOR ACCESS RULES (User & Group Level Permissions with Folder Inheritance)
 CREATE TABLE IF NOT EXISTS connector_access_rules (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
@@ -199,6 +214,8 @@ CREATE TABLE IF NOT EXISTS rag_queries (
 CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_groups_tenant_id ON groups(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_connectors_tenant_id ON connectors(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_connector_accounts_tenant ON connector_accounts(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_connector_accounts_conn ON connector_accounts(connector_id);
 CREATE INDEX IF NOT EXISTS idx_connector_items_tenant_id ON connector_items(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_connector_items_conn_id ON connector_items(connector_id);
 CREATE INDEX IF NOT EXISTS idx_connector_items_parent_id ON connector_items(parent_id);

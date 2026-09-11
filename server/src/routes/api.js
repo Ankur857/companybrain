@@ -60,22 +60,25 @@ router.delete('/groups/:id/members/:userId', authenticate, requireAdmin, GroupCo
 // ================= CONNECTORS (ADMIN ONLY) =================
 router.get('/connectors', authenticate, requireAdmin, ConnectorController.getAll);
 router.get('/connectors/types', authenticate, requireAdmin, ConnectorController.getTypes);
-router.post('/connectors', authenticate, requireAdmin, ConnectorController.create);
 router.get('/connectors/:id', authenticate, requireAdmin, ConnectorController.getById);
 router.post('/connectors/:id/test', authenticate, requireAdmin, ConnectorController.test);
 router.post('/connectors/:id/sync', authenticate, requireAdmin, ConnectorController.sync);
 router.post('/connectors/:id/disconnect', authenticate, requireAdmin, ConnectorController.disconnect);
 router.delete('/connectors/:id', authenticate, requireAdmin, ConnectorController.delete);
 
-// Connector Items & Knowledge Selection
-router.get('/connectors/:id/items', authenticate, requireAdmin, ConnectorController.getItems);
-router.get('/connectors/:id/items/:itemId', authenticate, requireAdmin, ConnectorController.getItem);
-router.post('/connectors/:id/select', authenticate, requireAdmin, ConnectorController.selectItems);
+// Real Account OAuth & Live Connection Endpoints
+router.get('/connectors/oauth/:provider/authorize', authenticate, requireAdmin, ConnectorController.getOAuthUrl);
+router.get('/connectors/oauth/:provider/callback', ConnectorController.handleOAuthCallback);
+router.post('/connectors/supabase/connect', authenticate, requireAdmin, ConnectorController.connectSupabase);
+router.post('/connectors/development/connect', authenticate, requireAdmin, ConnectorController.connectDevelopment);
 
-// Connector Item Access Rules & Inheritance
+// Live Source Browsing & Selection
+router.get('/connectors/:id/browse', authenticate, requireAdmin, ConnectorController.browse);
+router.post('/connectors/:id/select', authenticate, requireAdmin, ConnectorController.selectKnowledge);
+
+// Connector Access Governance & Permissions
 router.get('/connectors/:id/items/:itemId/access', authenticate, requireAdmin, ConnectorController.getItemAccess);
 router.post('/connectors/:id/items/:itemId/access', authenticate, requireAdmin, ConnectorController.saveItemAccess);
-router.delete('/connectors/:id/items/:itemId/access/:accessId', authenticate, requireAdmin, ConnectorController.removeItemAccess);
 
 // ================= DOCUMENTS / KNOWLEDGE =================
 router.get('/documents', authenticate, DocumentController.getAll);

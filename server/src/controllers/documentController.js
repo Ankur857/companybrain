@@ -150,7 +150,7 @@ export class DocumentController {
         return res.status(404).json({ success: false, error: 'Document not found.' });
       }
 
-      const { title, content, department, project, classification, required_groups } = req.body;
+      const { title, content, department, project, classification, required_groups, allowed_user_ids, metadata } = req.body;
       const updates = { updated_at: new Date().toISOString() };
       if (title) updates.title = title;
       if (content) updates.content = content;
@@ -158,9 +158,33 @@ export class DocumentController {
       if (project) updates.project = project;
       if (classification) updates.classification = classification;
       if (Array.isArray(required_groups)) updates.required_groups = required_groups;
+      if (Array.isArray(allowed_user_ids) || metadata) {
+        updates.metadata = {
+          ...(existing.metadata || {}),
+          ...(metadata || {}),
+          ...(Array.isArray(allowed_user_ids) ? { allowed_user_ids } : {}),
+        };
+      }
 
       await db.from('documents').update(updates).eq('id', id);
-      return res.json({ success: true, message: 'Document updated successfully.' });
+
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        action: 'ACCESS_GRANTED',
+        resource_type: 'DOCUMENT',
+        resource_id: existing.title,
+        decision: 'SUCCESS',
+        reason: `Updated access governance rules for document [${existing.title}].`,
+        metadata: {
+          classification: updates.classification || existing.classification,
+          required_groups: updates.required_groups || existing.required_groups,
+          allowed_user_ids: updates.metadata?.allowed_user_ids,
+        },
+      });
+
+      return res.json({ success: true, message: 'Document access rules updated successfully.' });
     } catch (err) {
       return res.status(500).json({ success: false, error: err.message });
     }

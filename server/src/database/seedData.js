@@ -864,6 +864,7 @@ Orbit Systems Global Telemetry, Tracking, and Command (TT&C) Network:
   ],
 
   connectors: [],
+  connector_accounts: [],
   connector_items: [],
   connector_access_rules: [],
 };

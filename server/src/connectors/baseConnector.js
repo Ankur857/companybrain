@@ -1,85 +1,90 @@
 /**
  * Base Connector Class
- * Standard contract for enterprise knowledge source connectors.
+ * Standard contract for real enterprise knowledge source connectors.
  */
 export class BaseConnector {
-  constructor(config = {}, isDemo = false) {
+  constructor(config = {}, account = null, isDevelopmentMode = false) {
     this.config = config || {};
-    this.isDemo = Boolean(isDemo);
+    this.account = account || null;
+    this.isDevelopmentMode = Boolean(isDevelopmentMode);
     this.type = 'generic';
     this.name = 'Base Connector';
   }
 
   /**
-   * Connect to source repository using provided configuration or demo mock
+   * Check if this connector integration has required credentials configured
    */
-  async connect() {
-    throw new Error('Method connect() must be implemented.');
+  isConfigured() {
+    return false;
   }
 
   /**
-   * Test connection latency, credentials, and reachability
+   * Generate OAuth authorization URL for the user to sign in
+   * @param {string} state - Cryptographically signed state containing tenant_id, user_id
+   * @param {string} redirectUri - OAuth callback URL
+   */
+  getAuthorizationUrl(state, redirectUri) {
+    throw new Error('Method getAuthorizationUrl() must be implemented.');
+  }
+
+  /**
+   * Exchange authorization code for access & refresh tokens
+   */
+  async handleOAuthCallback(code, redirectUri) {
+    throw new Error('Method handleOAuthCallback() must be implemented.');
+  }
+
+  /**
+   * Test connection validity and latency
    */
   async testConnection() {
     throw new Error('Method testConnection() must be implemented.');
   }
 
   /**
-   * Disconnect connector
+   * Disconnect and revoke credentials
    */
   async disconnect() {
-    return { success: true, message: `${this.name} disconnected successfully.` };
+    return { success: true, message: `${this.name} disconnected.` };
   }
 
   /**
-   * List hierarchical items (folders, files, tables, schemas)
-   * @param {string|null} parentId - Filter by parent external_id, null for root
+   * List real items from the connected source
+   * @param {string|null} folderId - ID of parent folder/site/schema
+   * @param {string} search - Search query
    */
-  async listItems(parentId = null) {
+  async listItems(folderId = null, search = '') {
     throw new Error('Method listItems() must be implemented.');
   }
 
   /**
-   * Get single item details by external_id
-   * @param {string} itemId
+   * Get metadata for a specific item
    */
   async getItem(itemId) {
     throw new Error('Method getItem() must be implemented.');
   }
 
   /**
-   * Format and prepare selected items for ingestion into CompanyBrain knowledge base
-   * @param {Array<Object>} selectedItems
+   * Download or export real content from the source item
    */
-  async sync(selectedItems = []) {
-    throw new Error('Method sync() must be implemented.');
+  async downloadItem(itemId, metadata = {}) {
+    throw new Error('Method downloadItem() must be implemented.');
   }
 
   /**
-   * Fetch documents for legacy IngestionPipeline compatibility
+   * Format selected items into CompanyBrain knowledge documents
    */
-  async fetchDocuments() {
-    const items = await this.listItems('ALL');
-    return items
-      .filter((item) => item.item_type === 'file' || item.item_type === 'table')
-      .map((item) => ({
-        external_id: item.external_id,
-        title: item.name,
-        content: item.content || `Synchronized content for ${item.name}`,
-        source_type: this.type,
-        source_url: `https://${this.type}.corp.internal${item.path}`,
-        raw_metadata: item.metadata || {},
-        classification: item.metadata?.classification || 'INTERNAL',
-      }));
+  async sync(selectedItems = []) {
+    throw new Error('Method sync() must be implemented.');
   }
 
   getMetadata() {
     return {
       type: this.type,
       name: this.name,
-      isDemo: this.isDemo,
-      supportsHierarchicalBrowse: true,
-      supportsFolderAccessInheritance: true,
+      isConfigured: this.isConfigured(),
+      isDevelopmentMode: this.isDevelopmentMode,
+      supportsOAuth: true,
     };
   }
 }
