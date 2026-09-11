@@ -507,24 +507,74 @@ export class ProjectController {
       }
 
       const { data: pKnowledge } = await db.from('project_knowledge').select('*').eq('project_id', id);
-      const attachedDocIds = (pKnowledge || []).map((k) => k.document_id);
+      const attachedDocIds = new Set((pKnowledge || []).map((k) => k.document_id));
 
       const { data: allDocs } = await db.from('documents').select('*').eq('tenant_id', tenantId);
-      const attachedDocs = (allDocs || []).filter((d) => attachedDocIds.includes(d.id));
+
+      // Match documents: explicitly attached via project_knowledge OR tagged by project name/code/id
+      const projectNameLower = (project.name || '').trim().toLowerCase();
+      const projectCodeLower = (project.code || '').trim().toLowerCase();
+
+      const attachedDocs = (allDocs || []).filter((d) => {
+        if (attachedDocIds.has(d.id)) return true;
+        if (d.metadata?.projectId === id) return true;
+        if (d.project) {
+          const docProjLower = d.project.trim().toLowerCase();
+          if (docProjLower === projectNameLower) return true;
+          if (projectCodeLower && docProjLower === projectCodeLower) return true;
+          if (d.project === id) return true;
+        }
+        return false;
+      });
+
+      // Synchronize any newly matched documents into project_knowledge for consistency
+      for (const doc of attachedDocs) {
+        if (!attachedDocIds.has(doc.id)) {
+          try {
+            await db.from('project_knowledge').insert({
+              id: crypto.randomUUID(),
+              project_id: id,
+              document_id: doc.id,
+              created_at: new Date().toISOString(),
+            });
+            attachedDocIds.add(doc.id);
+          } catch (syncErr) {
+            // Non-blocking
+          }
+        }
+      }
 
       // Evaluate clearance for current user
       const evaluated = attachedDocs.map((doc) => {
         const decision = PolicyEngine.canAccess(req.user, doc);
+        const snippet = doc.content
+          ? (doc.content.length > 250 ? doc.content.slice(0, 250) + '...' : doc.content)
+          : '';
         return {
           id: doc.id,
+          document_id: doc.id,
+          project_id: id,
           title: doc.title,
           source_type: doc.source_type,
           source_url: doc.source_url,
           department: doc.department,
+          project: doc.project,
           classification: doc.classification,
+          content: snippet,
           canAccess: decision.allowed,
           accessReason: decision.reason,
           created_at: doc.created_at,
+          metadata: doc.metadata || {},
+          document: {
+            id: doc.id,
+            title: doc.title,
+            source_type: doc.source_type,
+            source_url: doc.source_url,
+            department: doc.department,
+            project: doc.project,
+            classification: doc.classification,
+            content: snippet,
+          },
         };
       });
 
@@ -532,7 +582,14 @@ export class ProjectController {
         success: true,
         knowledge: evaluated,
         allTenantDocs: ['Company Admin', 'Super Admin'].includes(req.user.role_name)
-          ? (allDocs || []).map((d) => ({ id: d.id, title: d.title, source_type: d.source_type, classification: d.classification }))
+          ? (allDocs || []).map((d) => ({
+              id: d.id,
+              title: d.title,
+              source_type: d.source_type,
+              classification: d.classification,
+              department: d.department,
+              project: d.project,
+            }))
           : [],
       });
     } catch (err) {

@@ -34,7 +34,9 @@ import {
   HelpCircle,
   FolderPlus,
   UploadCloud,
-  FileUp
+  FileUp,
+  FolderUp,
+  Files
 } from 'lucide-react';
 
 export function Connectors() {
@@ -81,8 +83,13 @@ export function Connectors() {
   const [selectedGroupIds, setSelectedGroupIds] = useState(new Set());
   const [savingAccess, setSavingAccess] = useState(false);
 
-  // Supabase Manual Upload (Admin Only) State
+  // Supabase Manual Upload (Admin Only) State (Supports File & Folder Upload)
   const [showSupabaseUploadModal, setShowSupabaseUploadModal] = useState(false);
+  const [uploadMode, setUploadMode] = useState('folder'); // 'file' | 'folder'
+  const [uploadFolderName, setUploadFolderName] = useState('');
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderReading, setFolderReading] = useState(false);
+  const [folderReadProgress, setFolderReadProgress] = useState('');
   const [uploadForm, setUploadForm] = useState({
     title: '',
     content: '',
@@ -393,6 +400,105 @@ export function Connectors() {
         }));
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  const handleFolderUploadChange = async (e) => {
+    const rawFiles = Array.from(e.target.files || []);
+    if (rawFiles.length === 0) return;
+
+    setFolderReading(true);
+    setFolderReadProgress(`Discovering files in folder...`);
+
+    let detectedFolder = '';
+    const firstRel = rawFiles[0].webkitRelativePath;
+    if (firstRel && firstRel.includes('/')) {
+      detectedFolder = firstRel.split('/')[0];
+    } else {
+      detectedFolder = 'Knowledge_Folder';
+    }
+
+    setUploadFolderName(detectedFolder);
+    setUploadForm((prev) => ({
+      ...prev,
+      project: prev.project && prev.project !== 'Core' ? prev.project : detectedFolder,
+    }));
+
+    const processed = [];
+    for (let i = 0; i < rawFiles.length; i++) {
+      const file = rawFiles[i];
+      setFolderReadProgress(`Reading file ${i + 1} of ${rawFiles.length}: ${file.name}`);
+
+      const relPath = file.webkitRelativePath || file.name;
+      if (file.name.startsWith('.') || relPath.includes('/.git/') || relPath.includes('node_modules/')) {
+        continue;
+      }
+
+      const isText =
+        file.type.startsWith('text/') ||
+        /\.(txt|md|json|csv|js|ts|jsx|tsx|html|css|py|java|go|rb|php|xml|yaml|yml|sql|prisma|sh|env|log)$/i.test(file.name);
+
+      let content = '';
+      try {
+        if (isText) {
+          content = await file.text();
+        } else {
+          content = `[Enterprise Document: ${file.name}] (${(file.size / 1024).toFixed(1)} KB, path: ${relPath}, type: ${file.type || 'application/octet-stream'}). Ingested directly into Supabase Knowledge Storage for CompanyBrain semantic retrieval and policy-governed RAG access.`;
+        }
+      } catch (err) {
+        content = `[Document: ${file.name}] (${(file.size / 1024).toFixed(1)} KB, path: ${relPath})`;
+      }
+
+      processed.push({
+        fileName: file.name,
+        relativePath: relPath,
+        fileType: file.type || 'text/plain',
+        sizeBytes: file.size,
+        content,
+      });
+    }
+
+    setFolderFiles(processed);
+    setFolderReading(false);
+    setFolderReadProgress('');
+  };
+
+  const handleSubmitFolderUpload = async () => {
+    if (folderFiles.length === 0) {
+      showToast('No valid documents found in selected folder.', 'error');
+      return;
+    }
+
+    setUploadingDoc(true);
+    try {
+      const res = await api.uploadSupabaseFolder({
+        folderName: uploadFolderName.trim() || 'Uploaded Folder',
+        department: uploadForm.department,
+        project: uploadForm.project || uploadFolderName.trim(),
+        classification: uploadForm.classification,
+        required_groups: Array.from(uploadSelectedGroupIds),
+        allowed_user_ids: Array.from(uploadSelectedUserIds),
+        files: folderFiles,
+      });
+
+      if (res.success) {
+        showToast(
+          `Folder "${uploadFolderName || 'Uploaded Folder'}" with ${res.count} document(s) uploaded to Supabase successfully!`,
+          'success'
+        );
+        setShowSupabaseUploadModal(false);
+        setFolderFiles([]);
+        setUploadFolderName('');
+        setUploadFileObj(null);
+        setUploadSelectedGroupIds(new Set());
+        setUploadSelectedUserIds(new Set());
+        loadData();
+      }
+    } catch (err) {
+      console.error('Folder upload error:', err);
+      showToast(`Folder upload failed: ${err.message}`, 'error');
+    } finally {
+      setUploadingDoc(false);
     }
   };
 
@@ -1320,45 +1426,159 @@ export function Connectors() {
               </div>
             ) : (
               <div className="space-y-4 text-xs">
-                {/* File Dropzone / Picker */}
-                <div className="space-y-1.5">
-                  <label className="text-slate-300 font-medium flex items-center justify-between">
-                    <span>Select File to Upload</span>
-                    <span className="text-[11px] font-mono text-slate-400">PDF, TXT, MD, JSON, CSV, DOCX</span>
-                  </label>
-                  <label className="border-2 border-dashed border-white/10 hover:border-indigo-500/50 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-950/50 hover:bg-slate-900/50">
-                    <input
-                      type="file"
-                      onChange={handleFileUploadChange}
-                      accept=".pdf,.docx,.doc,.txt,.md,.json,.csv"
-                      className="hidden"
-                    />
-                    <UploadCloud className="w-8 h-8 text-indigo-400 mb-2" />
-                    {uploadFileObj ? (
-                      <div className="text-center">
-                        <span className="text-white font-medium block truncate max-w-xs">{uploadFileObj.name}</span>
-                        <span className="text-[11px] font-mono text-emerald-400">{(uploadFileObj.size / 1024).toFixed(1)} KB • Ready</span>
-                      </div>
-                    ) : (
-                      <div className="text-center">
-                        <span className="text-slate-300 font-medium block">Click or drag file here</span>
-                        <span className="text-[11px] text-slate-500">File content will be read and ingested into Supabase</span>
-                      </div>
-                    )}
-                  </label>
+                {/* Mode Selector: Single Document vs Entire Folder */}
+                <div className="flex items-center p-1 bg-slate-950 rounded-xl border border-white/[0.08]">
+                  <button
+                    type="button"
+                    onClick={() => setUploadMode('folder')}
+                    className={`flex-1 py-2 px-3 rounded-lg font-medium text-xs flex items-center justify-center gap-2 transition-all ${
+                      uploadMode === 'folder'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <FolderUp className="w-4 h-4" />
+                    <span>Upload Entire Folder</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUploadMode('file')}
+                    className={`flex-1 py-2 px-3 rounded-lg font-medium text-xs flex items-center justify-center gap-2 transition-all ${
+                      uploadMode === 'file'
+                        ? 'bg-indigo-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    <span>Upload Single File</span>
+                  </button>
                 </div>
 
-                {/* Title */}
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-medium">Document Title *</label>
-                  <input
-                    type="text"
-                    value={uploadForm.title}
-                    onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
-                    placeholder="e.g. Q3 Financial Audit Report.pdf"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono"
-                  />
-                </div>
+                {uploadMode === 'folder' ? (
+                  /* ENTIRE FOLDER UPLOAD ZONE */
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-medium flex items-center justify-between">
+                        <span>Select or Drop Folder</span>
+                        <span className="text-[11px] font-mono text-slate-400">All nested files will be read & indexed</span>
+                      </label>
+                      <label className="border-2 border-dashed border-white/10 hover:border-indigo-500/50 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-950/50 hover:bg-slate-900/50">
+                        <input
+                          type="file"
+                          webkitdirectory=""
+                          directory=""
+                          multiple
+                          onChange={handleFolderUploadChange}
+                          className="hidden"
+                        />
+                        <FolderUp className="w-9 h-9 text-indigo-400 mb-2" />
+                        {folderFiles.length > 0 ? (
+                          <div className="text-center">
+                            <span className="text-white font-semibold block text-sm">
+                              📁 {uploadFolderName}
+                            </span>
+                            <span className="text-[11px] font-mono text-emerald-400">
+                              {folderFiles.length} file(s) discovered • Ready to ingest
+                            </span>
+                          </div>
+                        ) : folderReading ? (
+                          <div className="text-center">
+                            <div className="w-5 h-5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto mb-1"></div>
+                            <span className="text-xs text-indigo-300">{folderReadProgress}</span>
+                          </div>
+                        ) : (
+                          <div className="text-center">
+                            <span className="text-slate-200 font-medium block">Click to select a Folder from your computer</span>
+                            <span className="text-[11px] text-slate-500 mt-0.5">
+                              Reads all nested documents, code, PDFs, and data files inside the folder
+                            </span>
+                          </div>
+                        )}
+                      </label>
+                    </div>
+
+                    {/* Folder Name Identifier */}
+                    <div className="space-y-1">
+                      <label className="text-slate-300 font-medium">Folder / Knowledge Name *</label>
+                      <input
+                        type="text"
+                        value={uploadFolderName}
+                        onChange={(e) => setUploadFolderName(e.target.value)}
+                        placeholder="e.g. Project_Documentation, Compliance_Policies"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono"
+                      />
+                    </div>
+
+                    {/* Preview of Detected Files in Folder */}
+                    {folderFiles.length > 0 && (
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between text-slate-300 font-medium">
+                          <span>Discovered Files ({folderFiles.length})</span>
+                          <span className="text-[10px] font-mono text-slate-400">
+                            {(folderFiles.reduce((acc, f) => acc + (f.sizeBytes || 0), 0) / 1024).toFixed(1)} KB Total
+                          </span>
+                        </div>
+                        <div className="max-h-36 overflow-y-auto space-y-1 bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06]">
+                          {folderFiles.slice(0, 50).map((f, i) => (
+                            <div key={i} className="flex items-center justify-between text-[11px] p-1 rounded bg-slate-900/60 border border-white/[0.02]">
+                              <span className="text-slate-300 truncate max-w-sm font-mono">{f.relativePath}</span>
+                              <span className="text-[10px] font-mono text-slate-500 shrink-0 ml-2">
+                                {(f.sizeBytes / 1024).toFixed(1)} KB
+                              </span>
+                            </div>
+                          ))}
+                          {folderFiles.length > 50 && (
+                            <div className="text-[10px] font-mono text-slate-500 text-center py-1">
+                              + {folderFiles.length - 50} more files
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  /* SINGLE FILE UPLOAD ZONE */
+                  <div className="space-y-3">
+                    <div className="space-y-1.5">
+                      <label className="text-slate-300 font-medium flex items-center justify-between">
+                        <span>Select File to Upload</span>
+                        <span className="text-[11px] font-mono text-slate-400">PDF, TXT, MD, JSON, CSV, DOCX</span>
+                      </label>
+                      <label className="border-2 border-dashed border-white/10 hover:border-indigo-500/50 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-950/50 hover:bg-slate-900/50">
+                        <input
+                          type="file"
+                          onChange={handleFileUploadChange}
+                          accept=".pdf,.docx,.doc,.txt,.md,.json,.csv"
+                          className="hidden"
+                        />
+                        <UploadCloud className="w-8 h-8 text-indigo-400 mb-2" />
+                        {uploadFileObj ? (
+                          <div className="text-center">
+                            <span className="text-white font-medium block truncate max-w-xs">{uploadFileObj.name}</span>
+                            <span className="text-[11px] font-mono text-emerald-400">{(uploadFileObj.size / 1024).toFixed(1)} KB • Ready</span>
+                          </div>
+                        ) : (
+                          <div className="text-center">
+                            <span className="text-slate-300 font-medium block">Click or drag file here</span>
+                            <span className="text-[11px] text-slate-500">File content will be read and ingested into Supabase</span>
+                          </div>
+                        )}
+                      </label>
+                    </div>
+
+                    {/* Title */}
+                    <div className="space-y-1">
+                      <label className="text-slate-300 font-medium">Document Title *</label>
+                      <input
+                        type="text"
+                        value={uploadForm.title}
+                        onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
+                        placeholder="e.g. Q3 Financial Audit Report.pdf"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono"
+                      />
+                    </div>
+                  </div>
+                )}
 
                 {/* Row: Department & Sensitivity Classification */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1401,27 +1621,37 @@ export function Connectors() {
                   <label className="text-slate-300 font-medium">Project (Optional)</label>
                   <input
                     type="text"
+                    list="conn-project-options"
                     value={uploadForm.project}
                     onChange={(e) => setUploadForm({ ...uploadForm, project: e.target.value })}
                     placeholder="e.g. Project Alpha, Core Knowledge"
                     className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs"
                   />
+                  <datalist id="conn-project-options">
+                    <option value="Project Alpha" />
+                    <option value="Project Stealth Finance" />
+                    <option value="Project Beta" />
+                    <option value="Project Gamma" />
+                    <option value="Core Knowledge" />
+                  </datalist>
                 </div>
 
-                {/* Content preview/edit */}
-                <div className="space-y-1">
-                  <label className="text-slate-300 font-medium flex items-center justify-between">
-                    <span>Document Content / Extracted Text *</span>
-                    <span className="text-[10px] font-mono text-slate-500">{uploadForm.content.length} characters</span>
-                  </label>
-                  <textarea
-                    rows={4}
-                    value={uploadForm.content}
-                    onChange={(e) => setUploadForm({ ...uploadForm, content: e.target.value })}
-                    placeholder="Paste text or select a file above..."
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono leading-relaxed resize-y"
-                  />
-                </div>
+                {/* Content preview/edit (Single File mode only) */}
+                {uploadMode === 'file' && (
+                  <div className="space-y-1">
+                    <label className="text-slate-300 font-medium flex items-center justify-between">
+                      <span>Document Content / Extracted Text *</span>
+                      <span className="text-[10px] font-mono text-slate-500">{uploadForm.content.length} characters</span>
+                    </label>
+                    <textarea
+                      rows={4}
+                      value={uploadForm.content}
+                      onChange={(e) => setUploadForm({ ...uploadForm, content: e.target.value })}
+                      placeholder="Paste text or select a file above..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono leading-relaxed resize-y"
+                    />
+                  </div>
+                )}
 
                 {/* Access Governance Controls: Groups */}
                 <div className="space-y-2 pt-2 border-t border-white/[0.08]">
@@ -1511,23 +1741,43 @@ export function Connectors() {
                 Cancel
               </button>
 
-              <button
-                onClick={handleSubmitSupabaseUpload}
-                disabled={uploadingDoc || !uploadForm.title.trim() || !uploadForm.content.trim()}
-                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition-all"
-              >
-                {uploadingDoc ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Uploading...</span>
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud className="w-3.5 h-3.5" />
-                    <span>Upload to Supabase</span>
-                  </>
-                )}
-              </button>
+              {uploadMode === 'folder' ? (
+                <button
+                  onClick={handleSubmitFolderUpload}
+                  disabled={uploadingDoc || folderFiles.length === 0 || folderReading}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition-all"
+                >
+                  {uploadingDoc ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Uploading Folder ({folderFiles.length} docs)...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>Upload Folder ({folderFiles.length} files)</span>
+                    </>
+                  )}
+                </button>
+              ) : (
+                <button
+                  onClick={handleSubmitSupabaseUpload}
+                  disabled={uploadingDoc || !uploadForm.title.trim() || !uploadForm.content.trim()}
+                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition-all"
+                >
+                  {uploadingDoc ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Uploading...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>Upload to Supabase</span>
+                    </>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>

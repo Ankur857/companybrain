@@ -396,6 +396,27 @@ export class ConnectorController {
 
       await db.from('documents').insert(newDoc);
 
+      // Auto-link document to project in project_knowledge if project is specified
+      if (project && project !== 'Enterprise Knowledge' && project !== 'General') {
+        try {
+          const { data: tenantProjects } = await db.from('projects').select('*').eq('tenant_id', tenantId);
+          const cleanProj = (project || '').trim().toLowerCase();
+          const targetProject = (tenantProjects || []).find(
+            (p) => p.id === project || p.name.toLowerCase() === cleanProj || (p.code && p.code.toLowerCase() === cleanProj)
+          );
+          if (targetProject) {
+            await db.from('project_knowledge').insert({
+              id: crypto.randomUUID(),
+              project_id: targetProject.id,
+              document_id: newDoc.id,
+              created_at: new Date().toISOString(),
+            });
+          }
+        } catch (linkErr) {
+          console.error('Failed to auto-link document to project_knowledge:', linkErr);
+        }
+      }
+
       // Audit event
       await AuditService.logEvent({
         tenant_id: tenantId,
@@ -420,6 +441,126 @@ export class ConnectorController {
       });
     } catch (err) {
       console.error('Supabase upload error:', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  /**
+   * POST /api/connectors/supabase/upload-folder
+   * Admin only: Bulk upload an entire directory/folder of files into Supabase Knowledge Storage
+   */
+  static async uploadSupabaseFolder(req, res) {
+    try {
+      const tenantId = req.user.tenant_id;
+      const {
+        folderName,
+        files = [],
+        department = 'General',
+        project = 'Enterprise Knowledge',
+        classification = 'INTERNAL',
+        required_groups = [],
+        allowed_user_ids = []
+      } = req.body;
+
+      if (!Array.isArray(files) || files.length === 0) {
+        return res.status(400).json({ success: false, error: 'No files provided in folder upload payload.' });
+      }
+
+      const cleanFolderName = (folderName || 'Uploaded Folder').trim();
+      const insertedDocs = [];
+
+      for (const file of files) {
+        const docId = crypto.randomUUID();
+        const title = file.relativePath
+          ? `[${cleanFolderName}] ${file.relativePath}`
+          : `[${cleanFolderName}] ${file.fileName || file.title || 'Untitled Document'}`;
+
+        const newDoc = {
+          id: docId,
+          tenant_id: tenantId,
+          title,
+          content: file.content || `[Document: ${file.fileName || title}]`,
+          department: department || 'General',
+          project: project || cleanFolderName,
+          classification: classification || 'INTERNAL',
+          source_type: 'supabase',
+          source_url: `supabase://storage/folders/${cleanFolderName}/${file.relativePath || file.fileName || docId}`,
+          owner: req.user.email,
+          version: '1.0',
+          required_groups: Array.isArray(required_groups) ? required_groups : [],
+          is_demo: false,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          metadata: {
+            folderName: cleanFolderName,
+            fileName: file.fileName || file.title,
+            relativePath: file.relativePath || file.fileName,
+            fileType: file.fileType || 'text/plain',
+            sizeBytes: file.sizeBytes || (file.content ? file.content.length : 0),
+            uploadedBy: req.user.name,
+            uploadedByEmail: req.user.email,
+            uploadedAt: new Date().toISOString(),
+            allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids : [],
+            storageProvider: 'Supabase Knowledge Storage (Folder Ingestion)',
+          },
+        };
+
+        await db.from('documents').insert(newDoc);
+        insertedDocs.push(newDoc);
+      }
+
+      // Auto-link folder documents to project in project_knowledge if project is specified
+      const targetProjectStr = (project || cleanFolderName || '').trim();
+      if (targetProjectStr && targetProjectStr !== 'Enterprise Knowledge' && targetProjectStr !== 'General') {
+        try {
+          const { data: tenantProjects } = await db.from('projects').select('*').eq('tenant_id', tenantId);
+          const cleanProj = targetProjectStr.toLowerCase();
+          const targetProject = (tenantProjects || []).find(
+            (p) => p.id === project || p.name.toLowerCase() === cleanProj || (p.code && p.code.toLowerCase() === cleanProj)
+          );
+          if (targetProject) {
+            for (const doc of insertedDocs) {
+              await db.from('project_knowledge').insert({
+                id: crypto.randomUUID(),
+                project_id: targetProject.id,
+                document_id: doc.id,
+                created_at: new Date().toISOString(),
+              });
+            }
+          }
+        } catch (linkErr) {
+          console.error('Failed to auto-link folder documents to project_knowledge:', linkErr);
+        }
+      }
+
+      // Log structured audit event
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        action: 'KNOWLEDGE_SELECTED',
+        resource_type: 'FOLDER',
+        resource_id: cleanFolderName,
+        decision: 'SUCCESS',
+        reason: `Administrator uploaded folder [${cleanFolderName}] containing ${insertedDocs.length} document(s) into Supabase Knowledge Storage.`,
+        metadata: {
+          folderName: cleanFolderName,
+          fileCount: insertedDocs.length,
+          classification,
+          required_groups,
+          allowed_user_ids,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: `Successfully uploaded folder "${cleanFolderName}" with ${insertedDocs.length} document(s) to Supabase Knowledge Storage.`,
+        count: insertedDocs.length,
+        folderName: cleanFolderName,
+        documents: insertedDocs,
+      });
+    } catch (err) {
+      console.error('Supabase folder upload error:', err);
       return res.status(500).json({ success: false, error: err.message });
     }
   }

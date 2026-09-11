@@ -34,7 +34,9 @@ import {
   FolderArchive,
   X,
   FileCode,
-  Archive
+  Archive,
+  Plus,
+  Folder,
 } from 'lucide-react';
 
 export function ProjectIntelligence() {
@@ -61,6 +63,28 @@ export function ProjectIntelligence() {
   const [zipClassification, setZipClassification] = useState('Internal');
   const [uploadingZip, setUploadingZip] = useState(false);
   const [zipProgressText, setZipProgressText] = useState('');
+
+  // Direct Document & Folder Upload Modal State
+  const [showUploadModal, setShowUploadModal] = useState(false);
+  const [uploadMode, setUploadMode] = useState('folder'); // 'folder' | 'file'
+  const [uploadFolderName, setUploadFolderName] = useState('');
+  const [folderFiles, setFolderFiles] = useState([]);
+  const [folderReading, setFolderReading] = useState(false);
+  const [folderReadProgress, setFolderReadProgress] = useState('');
+  const [uploadFileObj, setUploadFileObj] = useState(null);
+  const [uploadForm, setUploadForm] = useState({
+    title: '',
+    content: '',
+    department: 'Engineering',
+    classification: 'INTERNAL',
+  });
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+
+  // Link Existing Tenant Document Modal State
+  const [showLinkModal, setShowLinkModal] = useState(false);
+  const [tenantDocs, setTenantDocs] = useState([]);
+  const [selectedDocToLink, setSelectedDocToLink] = useState('');
+  const [linkingDoc, setLinkingDoc] = useState(false);
 
   const isAdmin = ['Company Admin', 'Super Admin'].includes(user?.role_name) || user?.is_super_admin || user?.role === 'admin';
 
@@ -342,6 +366,230 @@ Use the quick action buttons above to explore the architecture, services, databa
     } finally {
       setUploadingZip(false);
       setZipProgressText('');
+    }
+  };
+
+  const handleSingleFileUploadChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFileObj(file);
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+    setUploadForm((prev) => ({
+      ...prev,
+      title: prev.title ? prev.title : nameWithoutExt,
+    }));
+
+    const reader = new FileReader();
+    const isText =
+      file.type.startsWith('text/') ||
+      file.name.endsWith('.txt') ||
+      file.name.endsWith('.md') ||
+      file.name.endsWith('.json') ||
+      file.name.endsWith('.csv');
+
+    if (isText) {
+      reader.onload = (evt) => {
+        setUploadForm((prev) => ({ ...prev, content: evt.target.result }));
+      };
+      reader.readAsText(file);
+    } else {
+      reader.onload = () => {
+        setUploadForm((prev) => ({
+          ...prev,
+          content: `[Enterprise Document: ${file.name}] (${(file.size / 1024).toFixed(1)} KB, type: ${file.type || 'application/octet-stream'}). Ingested directly for Project ${project?.name || ''} intelligence.`,
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handleFolderUploadChange = async (e) => {
+    const rawFiles = Array.from(e.target.files || []);
+    if (rawFiles.length === 0) return;
+
+    setFolderReading(true);
+    setFolderReadProgress('Discovering files in folder...');
+
+    let detectedFolder = '';
+    const firstRel = rawFiles[0].webkitRelativePath;
+    if (firstRel && firstRel.includes('/')) {
+      detectedFolder = firstRel.split('/')[0];
+    } else {
+      detectedFolder = `${project?.name || 'Project'}_Docs`;
+    }
+
+    setUploadFolderName(detectedFolder);
+
+    const processed = [];
+    for (let i = 0; i < rawFiles.length; i++) {
+      const file = rawFiles[i];
+      setFolderReadProgress(`Reading file ${i + 1} of ${rawFiles.length}: ${file.name}`);
+
+      const relPath = file.webkitRelativePath || file.name;
+      if (file.name.startsWith('.') || relPath.includes('/.git/') || relPath.includes('node_modules/')) {
+        continue;
+      }
+
+      const isText =
+        file.type.startsWith('text/') ||
+        /\.(txt|md|json|csv|js|ts|jsx|tsx|html|css|py|java|go|rb|php|xml|yaml|yml|sql|prisma|sh|env|log)$/i.test(file.name);
+
+      let content = '';
+      try {
+        if (isText) {
+          content = await file.text();
+        } else {
+          content = `[Enterprise Document: ${file.name}] (${(file.size / 1024).toFixed(1)} KB, path: ${relPath}, type: ${file.type || 'application/octet-stream'}). Ingested directly for Project ${project?.name || ''} intelligence.`;
+        }
+      } catch (err) {
+        content = `[Document: ${file.name}] (${(file.size / 1024).toFixed(1)} KB, path: ${relPath})`;
+      }
+
+      processed.push({
+        fileName: file.name,
+        relativePath: relPath,
+        fileType: file.type || 'text/plain',
+        sizeBytes: file.size,
+        content,
+      });
+    }
+
+    setFolderFiles(processed);
+    setFolderReading(false);
+    setFolderReadProgress('');
+  };
+
+  const handleSubmitFolderOrDoc = async (e) => {
+    e.preventDefault();
+    setUploadingDoc(true);
+    try {
+      if (uploadMode === 'folder') {
+        if (folderFiles.length === 0) {
+          showToast('error', 'No valid documents found in selected folder.');
+          setUploadingDoc(false);
+          return;
+        }
+
+        const res = await api.uploadSupabaseFolder({
+          folderName: uploadFolderName.trim() || project?.name || 'Project Docs',
+          department: uploadForm.department,
+          project: project?.name || 'Project Alpha',
+          classification: uploadForm.classification,
+          required_groups: [],
+          allowed_user_ids: [],
+          files: folderFiles,
+        });
+
+        if (res.success) {
+          showToast('success', `Folder "${uploadFolderName}" with ${res.count} file(s) ingested into ${project?.name}!`);
+          setShowUploadModal(false);
+          setFolderFiles([]);
+          setUploadFolderName('');
+
+          // Refresh project knowledge
+          const knowRes = await api.getProjectKnowledge(id);
+          if (knowRes.success) {
+            setAuthorizedDocs(knowRes.knowledge || []);
+          }
+        }
+      } else {
+        if (!uploadForm.title.trim() || !uploadForm.content.trim()) {
+          showToast('error', 'Document title and content are required.');
+          setUploadingDoc(false);
+          return;
+        }
+
+        const res = await api.uploadSupabaseDoc({
+          title: uploadForm.title.trim(),
+          content: uploadForm.content,
+          department: uploadForm.department,
+          project: project?.name || 'Project Alpha',
+          classification: uploadForm.classification,
+          required_groups: [],
+          allowed_user_ids: [],
+          fileName: uploadFileObj?.name || `${uploadForm.title}.txt`,
+          fileType: uploadFileObj?.type || 'text/plain',
+        });
+
+        if (res.success) {
+          showToast('success', `Document "${uploadForm.title}" ingested into ${project?.name}!`);
+          setShowUploadModal(false);
+          setUploadForm({ title: '', content: '', department: 'Engineering', classification: 'INTERNAL' });
+          setUploadFileObj(null);
+
+          // Refresh project knowledge
+          const knowRes = await api.getProjectKnowledge(id);
+          if (knowRes.success) {
+            setAuthorizedDocs(knowRes.knowledge || []);
+          }
+        }
+      }
+    } catch (err) {
+      showToast('error', err.message || 'Upload failed');
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
+  const openLinkModal = async () => {
+    try {
+      const knowRes = await api.getProjectKnowledge(id);
+      const existingIds = new Set((knowRes.knowledge || []).map((k) => k.id || k.document_id));
+      let candidateList = [];
+
+      if (knowRes.allTenantDocs && knowRes.allTenantDocs.length > 0) {
+        candidateList = knowRes.allTenantDocs.filter((d) => !existingIds.has(d.id));
+      } else {
+        const docsRes = await api.getDocuments();
+        candidateList = (docsRes.documents || []).filter((d) => !existingIds.has(d.id));
+      }
+
+      setTenantDocs(candidateList);
+      setSelectedDocToLink('');
+      setShowLinkModal(true);
+    } catch (err) {
+      showToast('error', err.message || 'Failed to load available documents');
+    }
+  };
+
+  const handleLinkDocument = async (e) => {
+    e.preventDefault();
+    if (!selectedDocToLink) return;
+
+    setLinkingDoc(true);
+    try {
+      await api.addProjectKnowledge(id, { documentId: selectedDocToLink });
+      showToast('success', 'Document linked to project successfully!');
+      setShowLinkModal(false);
+      setSelectedDocToLink('');
+
+      const knowRes = await api.getProjectKnowledge(id);
+      if (knowRes.success) {
+        setAuthorizedDocs(knowRes.knowledge || []);
+      }
+    } catch (err) {
+      showToast('error', err.message || 'Failed to link document');
+    } finally {
+      setLinkingDoc(false);
+    }
+  };
+
+  const handleLinkAllDocuments = async () => {
+    if (tenantDocs.length === 0) return;
+    setLinkingDoc(true);
+    try {
+      const docIds = tenantDocs.map((d) => d.id);
+      await api.addProjectKnowledge(id, { documentIds: docIds });
+      showToast('success', `Linked all ${docIds.length} document(s) to ${project?.name || 'project'}!`);
+      setShowLinkModal(false);
+      const knowRes = await api.getProjectKnowledge(id);
+      if (knowRes.success) {
+        setAuthorizedDocs(knowRes.knowledge || []);
+      }
+    } catch (err) {
+      showToast('error', err.message || 'Failed to link documents');
+    } finally {
+      setLinkingDoc(false);
     }
   };
 
@@ -695,14 +943,34 @@ Use the quick action buttons above to explore the architecture, services, databa
                   {authorizedDocs.length} Docs
                 </span>
                 {isAdmin && (
-                  <button
-                    onClick={() => setShowZipModal(true)}
-                    title="Upload GitHub repository .zip archive"
-                    className="p-1 rounded hover:bg-white/[0.08] text-indigo-400 hover:text-indigo-300 transition-colors"
-                    id="btn-upload-repo-zip-small"
-                  >
-                    <UploadCloud className="w-3.5 h-3.5" />
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setShowUploadModal(true)}
+                      title="Upload Folder or Documents directly to this project"
+                      className="px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-semibold flex items-center gap-1 transition-all shadow-sm"
+                      id="btn-upload-project-docs"
+                    >
+                      <UploadCloud className="w-3 h-3" />
+                      <span>Upload</span>
+                    </button>
+                    <button
+                      onClick={() => openLinkModal()}
+                      title="Link existing tenant documents to this project"
+                      className="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-[11px] font-medium flex items-center gap-1 transition-all border border-white/[0.08]"
+                      id="btn-link-project-docs"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Link</span>
+                    </button>
+                    <button
+                      onClick={() => setShowZipModal(true)}
+                      title="Upload GitHub repository .zip archive"
+                      className="p-1 rounded-lg hover:bg-white/[0.08] text-slate-400 hover:text-indigo-300 transition-colors"
+                      id="btn-upload-repo-zip-small"
+                    >
+                      <FolderArchive className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 )}
               </div>
             </div>
@@ -898,6 +1166,356 @@ Use the quick action buttons above to explore the architecture, services, databa
                   <UploadCloud className="w-4 h-4" />
                   <span>{uploadingZip ? 'Ingesting Codebase...' : 'Extract & Ingest Codebase'}</span>
                 </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Direct Document or Folder Upload */}
+      {showUploadModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-clean max-w-xl w-full p-6 relative border-slate-700 shadow-2xl animate-fade-in max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-4 border-b border-white/[0.08] mb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 rounded-xl bg-indigo-500/10 text-indigo-400 border border-indigo-500/20">
+                  <UploadCloud className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-white">
+                    Upload Knowledge: {project?.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-400">
+                    Directly attach documents or entire folders to this project's intelligence base
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowUploadModal(false)}
+                disabled={uploadingDoc}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Mode Switcher */}
+            <div className="flex p-1 bg-slate-950/80 rounded-xl border border-white/[0.08] mb-4">
+              <button
+                type="button"
+                onClick={() => setUploadMode('folder')}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${
+                  uploadMode === 'folder'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <Folder className="w-3.5 h-3.5" />
+                <span>Upload Entire Folder</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadMode('file')}
+                className={`flex-1 py-1.5 px-3 rounded-lg text-xs font-medium flex items-center justify-center gap-2 transition-all ${
+                  uploadMode === 'file'
+                    ? 'bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Upload Single File</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitFolderOrDoc} className="space-y-4 text-xs">
+              {uploadMode === 'folder' ? (
+                /* FOLDER UPLOAD ZONE */
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-slate-300 font-medium flex items-center justify-between">
+                      <span>Select Local Directory / Folder</span>
+                      <span className="text-[11px] font-mono text-indigo-400">Recursive Folder Upload</span>
+                    </label>
+                    <label className="border-2 border-dashed border-indigo-500/30 hover:border-indigo-500/60 rounded-xl p-5 flex flex-col items-center justify-center cursor-pointer transition-all bg-indigo-950/20 hover:bg-indigo-950/30 group">
+                      <input
+                        type="file"
+                        webkitdirectory="true"
+                        directory="true"
+                        multiple
+                        onChange={handleFolderUploadChange}
+                        className="hidden"
+                      />
+                      <Folder className="w-9 h-9 text-indigo-400 group-hover:scale-105 transition-transform mb-2" />
+                      {folderReading ? (
+                        <div className="text-center">
+                          <span className="text-indigo-300 font-medium block">{folderReadProgress}</span>
+                          <span className="text-[11px] text-slate-500">Scanning directory files...</span>
+                        </div>
+                      ) : folderFiles.length > 0 ? (
+                        <div className="text-center">
+                          <span className="text-white font-medium block truncate max-w-xs">{uploadFolderName}</span>
+                          <span className="text-[11px] font-mono text-emerald-400">
+                            {folderFiles.length} files discovered • Ready to ingest
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <span className="text-slate-200 font-medium block">Click to select folder from computer</span>
+                          <span className="text-[11px] text-slate-500">
+                            Uploads all documents, PDFs, specs, and code in the directory
+                          </span>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+
+                  {/* Folder Name Identifier */}
+                  <div className="space-y-1">
+                    <label className="text-slate-300 font-medium">Folder Identifier</label>
+                    <input
+                      type="text"
+                      value={uploadFolderName}
+                      onChange={(e) => setUploadFolderName(e.target.value)}
+                      placeholder="e.g. Project_Alpha_Architecture"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono"
+                    />
+                  </div>
+
+                  {/* Preview of Discovered Files */}
+                  {folderFiles.length > 0 && (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-slate-300 font-medium">
+                        <span>Discovered Files ({folderFiles.length})</span>
+                        <span className="text-[10px] font-mono text-slate-400">
+                          {(folderFiles.reduce((acc, f) => acc + (f.sizeBytes || 0), 0) / 1024).toFixed(1)} KB Total
+                        </span>
+                      </div>
+                      <div className="max-h-32 overflow-y-auto space-y-1 bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06]">
+                        {folderFiles.slice(0, 40).map((f, i) => (
+                          <div key={i} className="flex items-center justify-between text-[11px] p-1 rounded bg-slate-900/60 border border-white/[0.02]">
+                            <span className="text-slate-300 truncate max-w-sm font-mono">{f.relativePath}</span>
+                            <span className="text-[10px] font-mono text-slate-500 shrink-0 ml-2">
+                              {(f.sizeBytes / 1024).toFixed(1)} KB
+                            </span>
+                          </div>
+                        ))}
+                        {folderFiles.length > 40 && (
+                          <div className="text-[10px] font-mono text-slate-500 text-center py-1">
+                            + {folderFiles.length - 40} more files
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* SINGLE FILE UPLOAD ZONE */
+                <div className="space-y-3">
+                  <div className="space-y-1.5">
+                    <label className="text-slate-300 font-medium flex items-center justify-between">
+                      <span>Select File to Upload</span>
+                      <span className="text-[11px] font-mono text-slate-400">PDF, TXT, MD, JSON, CSV, DOCX</span>
+                    </label>
+                    <label className="border-2 border-dashed border-white/10 hover:border-indigo-500/50 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-950/50 hover:bg-slate-900/50">
+                      <input
+                        type="file"
+                        onChange={handleSingleFileUploadChange}
+                        accept=".pdf,.docx,.doc,.txt,.md,.json,.csv"
+                        className="hidden"
+                      />
+                      <UploadCloud className="w-8 h-8 text-indigo-400 mb-2" />
+                      {uploadFileObj ? (
+                        <div className="text-center">
+                          <span className="text-white font-medium block truncate max-w-xs">{uploadFileObj.name}</span>
+                          <span className="text-[11px] font-mono text-emerald-400">{(uploadFileObj.size / 1024).toFixed(1)} KB • Ready</span>
+                        </div>
+                      ) : (
+                        <div className="text-center">
+                          <span className="text-slate-300 font-medium block">Click or drag file here</span>
+                          <span className="text-[11px] text-slate-500">File content will be read and ingested into this project</span>
+                        </div>
+                      )}
+                    </label>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-300 font-medium">Document Title *</label>
+                    <input
+                      type="text"
+                      value={uploadForm.title}
+                      onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
+                      placeholder="e.g. Architecture Overview.pdf"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-300 font-medium flex items-center justify-between">
+                      <span>Document Content / Extracted Text *</span>
+                      <span className="text-[10px] font-mono text-slate-500">{uploadForm.content.length} characters</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={uploadForm.content}
+                      onChange={(e) => setUploadForm({ ...uploadForm, content: e.target.value })}
+                      placeholder="Extracted file contents or description..."
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono resize-none"
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Classification & Department Row */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-medium">Classification</label>
+                  <select
+                    value={uploadForm.classification}
+                    onChange={(e) => setUploadForm({ ...uploadForm, classification: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono"
+                  >
+                    <option value="PUBLIC">PUBLIC</option>
+                    <option value="INTERNAL">INTERNAL</option>
+                    <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                    <option value="RESTRICTED">RESTRICTED</option>
+                    <option value="HIGHLY_CONFIDENTIAL">HIGHLY_CONFIDENTIAL</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-medium">Department</label>
+                  <select
+                    value={uploadForm.department}
+                    onChange={(e) => setUploadForm({ ...uploadForm, department: e.target.value })}
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs"
+                  >
+                    <option value="Engineering">Engineering</option>
+                    <option value="Product">Product</option>
+                    <option value="Finance">Finance</option>
+                    <option value="HR">HR</option>
+                    <option value="Operations">Operations</option>
+                    <option value="Security">Security</option>
+                    <option value="Executive">Executive</option>
+                    <option value="General">General</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/[0.08]">
+                <button
+                  type="button"
+                  disabled={uploadingDoc}
+                  onClick={() => setShowUploadModal(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    uploadingDoc ||
+                    folderReading ||
+                    (uploadMode === 'folder' ? folderFiles.length === 0 : (!uploadForm.title.trim() || !uploadForm.content.trim()))
+                  }
+                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 transition-colors shadow-sm"
+                >
+                  {uploadingDoc ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>{uploadMode === 'folder' ? `Ingesting ${folderFiles.length} files...` : 'Uploading...'}</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud className="w-3.5 h-3.5" />
+                      <span>{uploadMode === 'folder' ? `Upload Folder (${folderFiles.length} files)` : 'Upload to Project'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Link Existing Tenant Documents */}
+      {showLinkModal && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-clean max-w-md w-full p-6 relative border-slate-700 shadow-2xl animate-fade-in">
+            <div className="flex items-center justify-between pb-4 border-b border-white/[0.08] mb-4">
+              <div className="flex items-center gap-2">
+                <Plus className="w-5 h-5 text-indigo-400" />
+                <h3 className="text-sm font-bold text-white">
+                  Link Document to {project?.name}
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowLinkModal(false)}
+                className="text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleLinkDocument} className="space-y-4 text-xs">
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-medium">Select Document from Company Knowledge</label>
+                <select
+                  value={selectedDocToLink}
+                  onChange={(e) => setSelectedDocToLink(e.target.value)}
+                  className="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs"
+                >
+                  <option value="">Choose document to link...</option>
+                  {tenantDocs.map((d) => (
+                    <option key={d.id} value={d.id}>
+                      {d.title} ({d.source_type} • {d.classification})
+                    </option>
+                  ))}
+                </select>
+                {tenantDocs.length === 0 && (
+                  <p className="text-[11px] text-slate-500 mt-1">All company documents are already linked to this project.</p>
+                )}
+              </div>
+
+              <div className="flex items-center justify-between pt-3 border-t border-white/[0.08]">
+                {tenantDocs.length > 0 ? (
+                  <button
+                    type="button"
+                    disabled={linkingDoc}
+                    onClick={handleLinkAllDocuments}
+                    className="px-3 py-2 rounded-lg bg-indigo-950/60 border border-indigo-500/30 hover:bg-indigo-900/60 text-indigo-300 text-xs font-semibold flex items-center gap-1.5 transition-colors disabled:opacity-50"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                    <span>Link All ({tenantDocs.length})</span>
+                  </button>
+                ) : <div />}
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowLinkModal(false)}
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={linkingDoc || !selectedDocToLink}
+                    className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm"
+                  >
+                    {linkingDoc ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Linking...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-3.5 h-3.5" />
+                        <span>Link Selected</span>
+                      </>
+                    )}
+                  </button>
+                </div>
               </div>
             </form>
           </div>

@@ -355,9 +355,26 @@ export class RAGService {
       .select('*')
       .eq('project_id', project_id);
 
-    const docIds = (knowledgeRows || []).map((k) => k.document_id);
+    const docIds = new Set((knowledgeRows || []).map((k) => k.document_id));
 
-    if (docIds.length === 0) {
+    // Fetch candidate project documents (both via project_knowledge and direct project tag)
+    const { data: allTenantDocs } = await db.from('documents').select('*').eq('tenant_id', tenantId);
+    const projectNameLower = (project.name || '').trim().toLowerCase();
+    const projectCodeLower = (project.code || '').trim().toLowerCase();
+
+    const candidateDocs = (allTenantDocs || []).filter((d) => {
+      if (docIds.has(d.id)) return true;
+      if (d.metadata?.projectId === project_id) return true;
+      if (d.project) {
+        const docProjLower = d.project.trim().toLowerCase();
+        if (docProjLower === projectNameLower) return true;
+        if (projectCodeLower && docProjLower === projectCodeLower) return true;
+        if (d.project === project_id) return true;
+      }
+      return false;
+    });
+
+    if (candidateDocs.length === 0) {
       return {
         success: true,
         answer: `This project doesn't have any knowledge sources yet.\n\nAn administrator must attach documents or files to **${project.name}** before project intelligence can be generated.`,
@@ -370,10 +387,6 @@ export class RAGService {
         },
       };
     }
-
-    // Fetch candidate project documents
-    const { data: projectDocs } = await db.from('documents').select('*').in('id', docIds);
-    const candidateDocs = projectDocs || [];
 
     // 4. LEVEL 2: DOCUMENT-LEVEL SECURITY EVALUATION (BEFORE RAG)
     const { authorized, denied } = PolicyEngine.filterAuthorizedDocuments(user, candidateDocs);
