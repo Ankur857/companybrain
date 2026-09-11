@@ -3,6 +3,7 @@ import { useParams, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { useToast } from '../context/ToastContext';
+import { AIProcessingState } from '../components/AIProcessingState';
 import {
   FolderKanban,
   Sparkles,
@@ -92,64 +93,13 @@ export function ProjectIntelligence() {
   const [messages, setMessages] = useState([]);
   const messagesEndRef = useRef(null);
 
-  // Quick Action Prompts for New Joiners & Freshers
-  const quickActions = [
-    {
-      id: 'onboarding',
-      label: 'What should I understand first?',
-      icon: Compass,
-      description: 'Prioritized onboarding guide for freshers joining this project',
-      color: 'text-amber-400 bg-amber-500/10 border-amber-500/20 hover:border-amber-500/40'
-    },
-    {
-      id: 'architecture',
-      label: 'Explain Architecture',
-      icon: Layers,
-      description: 'System topology, communication protocols, and diagrams',
-      color: 'text-indigo-400 bg-indigo-500/10 border-indigo-500/20 hover:border-indigo-500/40'
-    },
-    {
-      id: 'services',
-      label: 'Explain Services & Stack',
-      icon: Cpu,
-      description: 'Backend, frontend, background workers, and caching layers',
-      color: 'text-cyan-400 bg-cyan-500/10 border-cyan-500/20 hover:border-cyan-500/40'
-    },
-    {
-      id: 'database',
-      label: 'Explain Database & Schema',
-      icon: Database,
-      description: 'PostgreSQL/Supabase schemas, relations, and storage models',
-      color: 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20 hover:border-emerald-500/40'
-    },
-    {
-      id: 'apis',
-      label: 'Explain Available APIs',
-      icon: Terminal,
-      description: 'REST endpoints, payload contracts, and authentication flow',
-      color: 'text-purple-400 bg-purple-500/10 border-purple-500/20 hover:border-purple-500/40'
-    },
-    {
-      id: 'deployment',
-      label: 'Deployment & CI/CD',
-      icon: Server,
-      description: 'Build pipelines, Docker, Kubernetes, and environment config',
-      color: 'text-rose-400 bg-rose-500/10 border-rose-500/20 hover:border-rose-500/40'
-    },
-    {
-      id: 'summary',
-      label: 'Summarize Documentation',
-      icon: BookOpen,
-      description: 'Executive digest of all authorized project documents',
-      color: 'text-blue-400 bg-blue-500/10 border-blue-500/20 hover:border-blue-500/40'
-    },
-    {
-      id: 'overview',
-      label: 'Full Project Overview',
-      icon: Info,
-      description: 'High-level business context, objectives, and domain overview',
-      color: 'text-slate-300 bg-slate-800 border-white/[0.08] hover:border-white/20'
-    },
+  // Suggested Questions for Project Intelligence
+  const projectSuggestions = [
+    { label: 'What should I learn first?', query: 'What should I understand first to onboard onto this project?' },
+    { label: 'Explain the architecture', query: 'Explain the architecture and high-level system topology of this project.' },
+    { label: 'Summarize the project', query: 'Provide an executive summary of this project and its domain objectives.' },
+    { label: 'What services are used?', query: 'What services, backend stack, queues, and caches are used in this project?' },
+    { label: 'Explain the database', query: 'Explain the database schema, models, and data relations used in this project.' },
   ];
 
   // Scroll to bottom of chat
@@ -676,13 +626,13 @@ Use the quick action buttons above to explore the architecture, services, databa
               <span className="text-[10px] font-mono text-emerald-400 capitalize">{project.status}</span>
             </div>
 
-            <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-              <FolderKanban className="w-7 h-7 text-indigo-400" />
-              {project.name}
+            <h1 className="text-2xl lg:text-3xl font-bold text-white tracking-tight flex items-center gap-2.5">
+              <span className="text-indigo-400">✨</span>
+              <span>AI Agent • {project.name}</span>
             </h1>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              {project.description || 'Enterprise project repository and system knowledge base.'}
+              Ask anything about this project. Answers are strictly synthesized from authorized project documentation.
             </p>
 
             {project.tags && project.tags.length > 0 && (
@@ -714,42 +664,22 @@ Use the quick action buttons above to explore the architecture, services, databa
         </div>
       </div>
 
-      {/* Quick Action Buttons for Freshers / Onboarding */}
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-mono uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-            <span>Fast-Track Onboarding & Architectural Prompts</span>
-          </div>
-          <span className="text-[11px] text-slate-500">Click any prompt to instantly synthesize response</span>
-        </div>
-
-        <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-4 gap-2.5">
-          {quickActions.map((action) => {
-            const Icon = action.icon;
-            const isCurrent = evaluating && currentAction === action.id;
-
-            return (
-              <button
-                key={action.id}
-                disabled={evaluating}
-                onClick={() => handleExecuteUnderstanding(action.id, action.label)}
-                className={`flex flex-col p-3 rounded-xl border text-left transition-all ${action.color} ${
-                  isCurrent ? 'ring-2 ring-indigo-500 animate-pulse' : ''
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                <div className="flex items-center justify-between mb-1.5">
-                  <Icon className="w-4 h-4 shrink-0" />
-                  <ChevronRight className="w-3.5 h-3.5 opacity-60" />
-                </div>
-                <div className="text-xs font-semibold text-white truncate">{action.label}</div>
-                <div className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">
-                  {action.description}
-                </div>
-              </button>
-            );
-          })}
-        </div>
+      {/* Suggested Questions */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-1 text-xs">
+        <span className="text-[10px] font-mono text-slate-500 uppercase shrink-0 flex items-center gap-1">
+          <Sparkles className="w-3 h-3 text-indigo-400" />
+          Suggested Questions:
+        </span>
+        {projectSuggestions.map((s, idx) => (
+          <button
+            key={idx}
+            disabled={evaluating}
+            onClick={() => handleExecuteUnderstanding('chat', s.query)}
+            className="px-3 py-1.5 rounded-full bg-slate-900 hover:bg-indigo-600/20 hover:border-indigo-500/40 text-slate-300 hover:text-white text-xs border border-white/[0.08] transition-all shrink-0 font-medium disabled:opacity-50"
+          >
+            {s.label}
+          </button>
+        ))}
       </div>
 
       {/* Main Two-Column Layout: Chat on Left, Authorized Docs on Right */}
@@ -887,15 +817,7 @@ Use the quick action buttons above to explore the architecture, services, databa
             })}
 
             {evaluating && (
-              <div className="flex gap-3">
-                <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center shrink-0">
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
-                </div>
-                <div className="p-3 rounded-2xl bg-slate-800/90 border border-white/[0.06] text-xs text-slate-400 flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-indigo-500 animate-ping"></div>
-                  <span>Pre-filtering authorized project knowledge & synthesizing answer...</span>
-                </div>
-              </div>
+              <AIProcessingState isProjectContext={true} projectName={project?.name} />
             )}
 
             <div ref={messagesEndRef} />
@@ -920,10 +842,10 @@ Use the quick action buttons above to explore the architecture, services, databa
             <button
               type="submit"
               disabled={evaluating || !queryInput.trim()}
-              className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-semibold flex items-center gap-1.5 shadow-sm transition-all shrink-0"
+              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-semibold flex items-center gap-1.5 shadow-md shadow-indigo-600/20 transition-all shrink-0"
             >
               <Send className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Ask</span>
+              <span>Ask AI</span>
             </button>
           </form>
         </div>

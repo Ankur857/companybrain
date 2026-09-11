@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AuthModal } from './AuthModal';
 import {
@@ -34,14 +35,14 @@ export function Header() {
   return (
     <header className="sticky top-0 z-40 w-full bg-slate-900/90 backdrop-blur-xl border-b border-slate-700/60 px-4 lg:px-6 py-2.5">
       <div className="flex items-center justify-between gap-4 max-w-7xl mx-auto">
-        {/* Brand */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-indigo-600/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shadow-sm">
+        {/* Brand Link to AI Agent */}
+        <Link to="/chat" className="flex items-center gap-3 group">
+          <div className="w-8 h-8 rounded-lg bg-indigo-600/10 border border-indigo-500/25 flex items-center justify-center text-indigo-400 shadow-sm group-hover:border-indigo-400/50 transition-colors">
             <Shield className="w-4 h-4" />
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-semibold text-sm tracking-tight text-white">
+              <span className="font-semibold text-sm tracking-tight text-white group-hover:text-indigo-200 transition-colors">
                 CompanyBrain
               </span>
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-white/[0.06] text-slate-400 border border-white/[0.06]">
@@ -52,7 +53,7 @@ export function Header() {
               Permission-aware AI knowledge platform
             </span>
           </div>
-        </div>
+        </Link>
 
         {/* Center: Subtle Security Indicator */}
         <div className="hidden md:flex items-center gap-2">

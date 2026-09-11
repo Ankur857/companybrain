@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext';
 import { api } from '../services/api';
 import { useToast } from '../context/ToastContext';
 import { CitationModal } from '../components/CitationModal';
+import { AIProcessingState } from '../components/AIProcessingState';
 import {
   Send,
   Shield,
@@ -47,12 +48,12 @@ export function AIAssistant() {
       {
         id: 'welcome',
         sender: 'assistant',
-        text: `Hello ${user?.name}. I am CompanyBrain, your enterprise AI knowledge assistant for ${tenant?.name}.
+        text: `Hello ${user?.name || 'Engineer'}. I am CompanyBrain **AI Agent** for ${tenant?.name || 'your enterprise'}.
 
 You are logged in with **${user?.role_name}** clearance in the **${user?.department}** department.
-Your verified access groups: ${(user?.access_groups || []).map((g) => g.name).join(', ') || 'None'}.
+Verified access groups: ${(user?.access_groups || []).map((g) => g.name).join(', ') || 'General'}.
 
-Every question you submit is verified against the CompanyBrain Policy Engine before context is compiled. You will only receive answers sourced from documentation you are authorized to view.`,
+Ask me any question below. Answers are strictly synthesized from authorized company documentation that you have security clearance to access.`,
         sources: [],
         decision: 'INFO',
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -169,11 +170,28 @@ Every question you submit is verified against the CompanyBrain Policy Engine bef
       {/* Main Conversation Canvas */}
       <div className="flex-1 card-clean flex flex-col overflow-hidden">
         {/* Top Chat Subheader */}
-        <div className="px-6 py-3 border-b border-white/[0.06] bg-slate-900/40 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2.5">
+        <div className="px-6 py-3.5 border-b border-white/[0.06] bg-slate-900/60 flex items-center justify-between shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400">
+              <Sparkles className="w-4 h-4" />
+            </div>
+            <div>
+              <h1 className="text-sm font-bold text-white tracking-tight flex items-center gap-2">
+                AI Agent
+                <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-indigo-500/20 text-indigo-300 font-semibold border border-indigo-500/30">
+                  ENTERPRISE
+                </span>
+              </h1>
+              <p className="text-[11px] text-slate-400">
+                Ask anything about your authorized company knowledge
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
             <button
               onClick={() => setShowHistory(!showHistory)}
-              className={`p-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
+              className={`px-2.5 py-1.5 rounded-lg text-xs font-medium border transition-colors flex items-center gap-1.5 ${
                 showHistory
                   ? 'bg-indigo-600 text-white border-transparent'
                   : 'bg-slate-900 border-white/[0.06] text-slate-400 hover:text-slate-200'
@@ -181,17 +199,12 @@ Every question you submit is verified against the CompanyBrain Policy Engine bef
               title="Toggle Query History"
             >
               <History className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">History</span>
+              <span className="hidden sm:inline text-[11px]">History</span>
             </button>
-            <div className="text-xs text-slate-400">
-              Workspace: <strong className="text-slate-200 font-medium">{tenant?.name}</strong>
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-900/90 border border-white/[0.06] text-[10px] font-mono text-emerald-400">
+              <Shield className="w-3 h-3" />
+              <span>Zero-Leak Active</span>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2 text-[11px] font-mono text-slate-400">
-            <span className="flex items-center gap-1 text-emerald-400">
-              <Shield className="w-3 h-3" /> Zero-Leak Enforced
-            </span>
           </div>
         </div>
 
@@ -280,15 +293,7 @@ Every question you submit is verified against the CompanyBrain Policy Engine bef
             ))}
 
             {loading && (
-              <div className="flex gap-3.5">
-                <div className="w-7 h-7 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
-                  <Bot className="w-4 h-4" />
-                </div>
-                <div className="p-3.5 rounded-2xl bg-slate-900/80 border border-white/[0.06] text-slate-400 text-xs flex items-center gap-2.5">
-                  <div className="w-3.5 h-3.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
-                  <span>Evaluating clearance with Policy Engine & querying authorized sources...</span>
-                </div>
-              </div>
+              <AIProcessingState isProjectContext={false} />
             )}
 
             <div ref={messagesEndRef} />
@@ -332,9 +337,9 @@ Every question you submit is verified against the CompanyBrain Policy Engine bef
               <button
                 type="submit"
                 disabled={!query.trim() || loading}
-                className="px-4 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-medium text-sm flex items-center gap-2 transition-colors shrink-0 shadow-sm"
+                className="px-5 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 disabled:hover:bg-indigo-600 text-white font-semibold text-sm flex items-center gap-2 transition-all shrink-0 shadow-md shadow-indigo-600/20"
               >
-                <span>Ask</span>
+                <span>Ask AI</span>
                 <Send className="w-3.5 h-3.5" />
               </button>
             </form>
