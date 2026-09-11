@@ -61,15 +61,48 @@ CREATE TABLE IF NOT EXISTS user_groups (
 CREATE TABLE IF NOT EXISTS connectors (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
-    type VARCHAR(100) NOT NULL, -- google_drive, sharepoint, mongodb, supabase, confluence, crm, generic_api
+    type VARCHAR(100) NOT NULL, -- google_drive, sharepoint, supabase
     name VARCHAR(255) NOT NULL,
     status VARCHAR(50) DEFAULT 'DISCONNECTED', -- CONNECTED, SYNCING, SYNCED, ERROR, DISCONNECTED
+    is_demo BOOLEAN DEFAULT FALSE,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
     configuration JSONB DEFAULT '{}'::jsonb,
     last_sync_at TIMESTAMP WITH TIME ZONE,
     sync_status VARCHAR(50) DEFAULT 'IDLE',
     document_count INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6b. CONNECTOR ITEMS (Discovered & Selected Files/Folders/Tables)
+CREATE TABLE IF NOT EXISTS connector_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    connector_id UUID NOT NULL REFERENCES connectors(id) ON DELETE CASCADE,
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    external_id VARCHAR(255) NOT NULL,
+    parent_id VARCHAR(255),
+    item_type VARCHAR(50) NOT NULL, -- folder, file, table, schema
+    name VARCHAR(255) NOT NULL,
+    path VARCHAR(1000) NOT NULL,
+    source_type VARCHAR(100) NOT NULL, -- google_drive, sharepoint, supabase
+    mime_type VARCHAR(255),
+    metadata JSONB DEFAULT '{}'::jsonb,
+    is_selected BOOLEAN DEFAULT FALSE,
+    sync_status VARCHAR(50) DEFAULT 'PENDING', -- PENDING, SYNCED, ERROR
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+-- 6c. CONNECTOR ACCESS RULES (User & Group Level Permissions with Folder Inheritance)
+CREATE TABLE IF NOT EXISTS connector_access_rules (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tenant_id UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
+    connector_item_id UUID NOT NULL REFERENCES connector_items(id) ON DELETE CASCADE,
+    subject_type VARCHAR(50) NOT NULL, -- USER, GROUP
+    subject_id UUID NOT NULL,
+    permission VARCHAR(50) DEFAULT 'READ', -- READ, WRITE, ADMIN
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 -- 7. SCHEMA / SEMANTIC MAPPINGS
@@ -166,6 +199,11 @@ CREATE TABLE IF NOT EXISTS rag_queries (
 CREATE INDEX IF NOT EXISTS idx_users_tenant_id ON users(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_groups_tenant_id ON groups(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_connectors_tenant_id ON connectors(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_connector_items_tenant_id ON connector_items(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_connector_items_conn_id ON connector_items(connector_id);
+CREATE INDEX IF NOT EXISTS idx_connector_items_parent_id ON connector_items(parent_id);
+CREATE INDEX IF NOT EXISTS idx_conn_access_tenant_id ON connector_access_rules(tenant_id);
+CREATE INDEX IF NOT EXISTS idx_conn_access_item_id ON connector_access_rules(connector_item_id);
 CREATE INDEX IF NOT EXISTS idx_documents_tenant_id ON documents(tenant_id);
 CREATE INDEX IF NOT EXISTS idx_documents_classification ON documents(classification);
 CREATE INDEX IF NOT EXISTS idx_documents_department ON documents(department);

@@ -30,7 +30,7 @@ export function Sidebar() {
   const manageItems = [
     { to: '/companies', label: 'Companies', icon: Building2 },
     { to: '/knowledge', label: 'Knowledge Base', icon: FileText },
-    { to: '/connectors', label: 'Connectors', icon: Network },
+    { to: '/connectors', label: 'Knowledge Sources', icon: Network, adminOnly: true },
     { to: '/users', label: 'Users & Roles', icon: Users, adminOnly: true },
     { to: '/groups', label: 'Access Groups', icon: KeyRound, adminOnly: true },
     { to: '/policies', label: 'Policy Engine', icon: ShieldCheck, adminOnly: true },

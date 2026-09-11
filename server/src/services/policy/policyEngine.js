@@ -58,6 +58,19 @@ export class PolicyEngine {
       ? document.required_groups
       : [];
 
+    // 2b. DIRECT USER ACCESS GRANT (Connector Knowledge Access)
+    const allowedUserIds = Array.isArray(document.metadata?.allowed_user_ids)
+      ? document.metadata.allowed_user_ids
+      : [];
+    if (allowedUserIds.includes(user.id)) {
+      return {
+        allowed: true,
+        reason: 'Access granted: User is explicitly granted direct access permission by Administrator.',
+        policy: 'Direct User Access Grant Policy',
+        classification,
+      };
+    }
+
     // 3. PUBLIC CLASSIFICATION
     if (classification === 'PUBLIC') {
       return {

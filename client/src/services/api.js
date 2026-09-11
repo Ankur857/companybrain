@@ -67,11 +67,22 @@ export const api = {
 
   // Connectors
   getConnectors: () => request('/connectors'),
+  getConnector: (id) => request(`/connectors/${id}`),
   getConnectorTypes: () => request('/connectors/types'),
   createConnector: (data) => request('/connectors', { method: 'POST', body: JSON.stringify(data) }),
   testConnector: (id) => request(`/connectors/${id}/test`, { method: 'POST' }),
   syncConnector: (id) => request(`/connectors/${id}/sync`, { method: 'POST' }),
   disconnectConnector: (id) => request(`/connectors/${id}/disconnect`, { method: 'POST' }),
+  deleteConnector: (id) => request(`/connectors/${id}`, { method: 'DELETE' }),
+  getConnectorItems: (id) => request(`/connectors/${id}/items`),
+  getConnectorItem: (id, itemId) => request(`/connectors/${id}/items/${itemId}`),
+  selectConnectorItems: (id, itemIds, isSelected) =>
+    request(`/connectors/${id}/select`, { method: 'POST', body: JSON.stringify({ itemIds, isSelected }) }),
+  getItemAccess: (id, itemId) => request(`/connectors/${id}/items/${itemId}/access`),
+  saveItemAccess: (id, itemId, data) =>
+    request(`/connectors/${id}/items/${itemId}/access`, { method: 'POST', body: JSON.stringify(data) }),
+  removeItemAccess: (id, itemId, accessId) =>
+    request(`/connectors/${id}/items/${itemId}/access/${accessId}`, { method: 'DELETE' }),
 
   // Documents
   getDocuments: () => request('/documents'),

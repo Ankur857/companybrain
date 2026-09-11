@@ -862,4 +862,8 @@ Orbit Systems Global Telemetry, Tracking, and Command (TT&C) Network:
       created_at: new Date(Date.now() - 1 * 3600000).toISOString(),
     },
   ],
+
+  connectors: [],
+  connector_items: [],
+  connector_access_rules: [],
 };
