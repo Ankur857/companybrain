@@ -23,6 +23,10 @@ import {
   RefreshCw,
   Folder,
   FolderUp,
+  FolderOpen,
+  ArrowLeft,
+  ChevronRight,
+  FileCode,
   Files
 } from 'lucide-react';
 
@@ -108,6 +112,81 @@ export function KnowledgeSources() {
 
     return matchesSearch && matchesClass;
   });
+
+  const [currentFolder, setCurrentFolder] = useState(null);
+  const [folderSearch, setFolderSearch] = useState('');
+
+  const getDocFolderName = (doc) => {
+    if (doc.metadata?.folderName && doc.metadata.folderName !== 'General' && doc.metadata.folderName !== 'Enterprise Knowledge') {
+      return doc.metadata.folderName;
+    }
+    if (doc.title && doc.title.startsWith('[')) {
+      const match = doc.title.match(/^\[(.*?)\]/);
+      if (match) return match[1];
+    }
+    return null;
+  };
+
+  // Group documents into Folders vs Standalone Files
+  const { folders, standaloneFiles } = React.useMemo(() => {
+    const foldersMap = {};
+    const standalone = [];
+
+    filteredDocs.forEach((doc) => {
+      const folderName = getDocFolderName(doc);
+      if (folderName) {
+        if (!foldersMap[folderName]) {
+          foldersMap[folderName] = {
+            id: `folder-${folderName}`,
+            name: folderName,
+            isFolder: true,
+            source_type: doc.source_type,
+            department: doc.department || 'Engineering',
+            project: doc.project || folderName,
+            files: [],
+            totalSizeBytes: 0,
+            updated_at: doc.updated_at,
+          };
+        }
+        foldersMap[folderName].files.push(doc);
+        foldersMap[folderName].totalSizeBytes += doc.metadata?.sizeBytes || 0;
+        if (new Date(doc.updated_at) > new Date(foldersMap[folderName].updated_at)) {
+          foldersMap[folderName].updated_at = doc.updated_at;
+        }
+      } else {
+        standalone.push(doc);
+      }
+    });
+
+    // Sort files within each folder in alphabetical / sequential order by relativePath or title
+    Object.values(foldersMap).forEach((f) => {
+      f.files.sort((a, b) => {
+        const nameA = (a.metadata?.relativePath || a.metadata?.fileName || a.title).toLowerCase();
+        const nameB = (b.metadata?.relativePath || b.metadata?.fileName || b.title).toLowerCase();
+        return nameA.localeCompare(nameB);
+      });
+    });
+
+    return {
+      folders: Object.values(foldersMap).sort((a, b) => a.name.localeCompare(b.name)),
+      standaloneFiles: standalone,
+    };
+  }, [filteredDocs]);
+
+  const activeFolderData = currentFolder
+    ? folders.find((f) => f.name === currentFolder.name) || currentFolder
+    : null;
+
+  const folderFilteredFiles = React.useMemo(() => {
+    if (!activeFolderData) return [];
+    if (!folderSearch.trim()) return activeFolderData.files;
+    const q = folderSearch.toLowerCase();
+    return activeFolderData.files.filter((f) => {
+      const title = f.title.toLowerCase();
+      const path = (f.metadata?.relativePath || f.metadata?.fileName || '').toLowerCase();
+      return title.includes(q) || path.includes(q);
+    });
+  }, [activeFolderData, folderSearch]);
 
   const openDoc = (doc) => {
     setSelectedDocId(doc.id);
@@ -460,13 +539,143 @@ export function KnowledgeSources() {
         )}
       </div>
 
-      {/* Documents Grid */}
+      {/* Folder View OR Top-Level Knowledge Sources Grid */}
       {loading ? (
         <div className="py-20 text-center text-slate-400">
           <div className="inline-block w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
           <p className="text-xs font-mono text-slate-500">Loading indexed documents...</p>
         </div>
-      ) : filteredDocs.length === 0 ? (
+      ) : activeFolderData ? (
+        /* ================= FOLDER DRILL-DOWN ORDERED VIEW ================= */
+        <div className="space-y-4">
+          {/* Breadcrumb & Folder Header Bar */}
+          <div className="card-clean p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-indigo-500/25 bg-slate-900/90 shadow-lg">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setCurrentFolder(null);
+                  setFolderSearch('');
+                }}
+                className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-indigo-300 hover:text-white text-xs font-semibold flex items-center gap-1.5 transition-all border border-white/[0.08] shadow-sm"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>All Knowledge Sources</span>
+              </button>
+              <span className="text-slate-600 font-mono">/</span>
+              <div className="flex items-center gap-2">
+                <Folder className="w-5 h-5 text-amber-400 fill-amber-400/20 shrink-0" />
+                <div>
+                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                    <span>{activeFolderData.name}</span>
+                    <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/25">
+                      {activeFolderData.files.length} {activeFolderData.files.length === 1 ? 'file' : 'files'} in order
+                    </span>
+                  </h2>
+                </div>
+              </div>
+            </div>
+
+            {/* In-Folder Search */}
+            <div className="relative w-full sm:w-64">
+              <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={folderSearch}
+                onChange={(e) => setFolderSearch(e.target.value)}
+                placeholder={`Search within ${activeFolderData.name}...`}
+                className="w-full pl-8 pr-3 py-1.5 rounded-xl bg-slate-950/80 border border-white/[0.08] focus:border-indigo-500 text-xs text-white placeholder-slate-500 outline-none transition-colors"
+              />
+            </div>
+          </div>
+
+          {/* Sequential Ordered List of Files */}
+          {folderFilteredFiles.length === 0 ? (
+            <div className="p-8 text-center card-clean text-slate-400 space-y-2 border border-white/[0.08]">
+              <FileText className="w-6 h-6 mx-auto text-slate-600" />
+              <p className="text-xs">No files matched your search inside this folder.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {folderFilteredFiles.map((file, index) => {
+                const cleanFileName =
+                  file.metadata?.relativePath ||
+                  file.metadata?.fileName ||
+                  file.title.replace(/^\[.*?\]\s*/, '');
+
+                return (
+                  <div
+                    key={file.id}
+                    className="card-clean p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border border-white/[0.06] hover:border-indigo-500/30 transition-all group"
+                  >
+                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                      {/* Order Index Pill */}
+                      <span className="w-6 h-6 rounded-md bg-slate-900 border border-white/[0.08] text-[10px] font-mono font-bold text-slate-400 flex items-center justify-center shrink-0">
+                        {index + 1}
+                      </span>
+
+                      {/* File Icon */}
+                      <div className="w-8 h-8 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                        <FileCode className="w-4 h-4" />
+                      </div>
+
+                      {/* File Name & Details */}
+                      <div className="min-w-0 flex-1">
+                        <h4 className="text-xs font-semibold text-white truncate group-hover:text-indigo-300 transition-colors">
+                          {cleanFileName}
+                        </h4>
+                        <div className="flex items-center gap-2 mt-0.5 text-[10px] font-mono text-slate-400 flex-wrap">
+                          <span className="text-slate-500 uppercase">{file.source_type}</span>
+                          <span>•</span>
+                          <span>Dept: {file.department || 'Engineering'}</span>
+                          {file.metadata?.sizeBytes ? (
+                            <>
+                              <span>•</span>
+                              <span>{(file.metadata.sizeBytes / 1024).toFixed(1)} KB</span>
+                            </>
+                          ) : null}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Status & Actions */}
+                    <div className="flex items-center gap-3 shrink-0 self-end sm:self-center">
+                      <SecurityBadge classification={file.classification} size="xs" />
+
+                      {file.canAccess ? (
+                        <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-medium">
+                          <CheckCircle2 className="w-3 h-3" /> CLEARANCE
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20 font-medium">
+                          <Lock className="w-3 h-3" /> RESTRICTED
+                        </span>
+                      )}
+
+                      <button
+                        onClick={() => openDoc(file)}
+                        className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-indigo-400 hover:text-indigo-300 border border-white/[0.08] text-[11px] font-medium flex items-center gap-1 transition-all"
+                      >
+                        <Eye className="w-3 h-3" />
+                        <span>View</span>
+                      </button>
+
+                      {isAdmin && (
+                        <button
+                          onClick={() => openManageAccess(file)}
+                          className="px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-white/[0.08] text-[11px] font-medium flex items-center gap-1 transition-all"
+                        >
+                          <ShieldCheck className="w-3 h-3" />
+                          <span>Access</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : folders.length === 0 && standaloneFiles.length === 0 ? (
         <div className="p-12 text-center card-clean text-slate-400 space-y-3 border border-white/[0.08]">
           <div className="w-12 h-12 mx-auto rounded-2xl bg-slate-900 border border-white/10 flex items-center justify-center text-slate-500">
             <FileText className="w-6 h-6" />
@@ -478,7 +687,7 @@ export function KnowledgeSources() {
             <p className="text-xs text-slate-400 mt-1 max-w-md mx-auto leading-relaxed">
               {search
                 ? `No documents matched "${search}". Try searching another keyword or clearing the filter to see all added files.`
-                : 'Only genuine files that you add from Google Drive or manually upload to Supabase (Admin) are displayed here. No pre-seeded dummy documents are shown.'}
+                : 'Only genuine files that you add from Google Drive or manually upload to Supabase (Admin) are displayed here.'}
             </p>
           </div>
           {isAdmin && !search && (
@@ -494,88 +703,158 @@ export function KnowledgeSources() {
           )}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredDocs.map((doc) => {
-            return (
-              <div
-                key={doc.id}
-                className="card-clean card-interactive p-5 flex flex-col justify-between space-y-4"
-              >
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between gap-2">
-                    <SecurityBadge classification={doc.classification} size="xs" />
-                    {doc.canAccess ? (
-                      <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-medium">
-                        <CheckCircle2 className="w-3 h-3" /> CLEARANCE GRANTED
-                      </span>
-                    ) : (
-                      <span className="flex items-center gap-1 text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20 font-medium">
-                        <Lock className="w-3 h-3" /> RESTRICTED
-                      </span>
-                    )}
-                  </div>
-
-                  <div>
-                    <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2">
-                      {doc.title}
-                    </h3>
-                    <div className="flex items-center gap-2 mt-2 text-[11px] font-mono text-slate-400 flex-wrap">
-                      <span className="px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-300">
-                        {doc.source_type}
-                      </span>
-                      <span>Dept: {doc.department || 'General'}</span>
-                      {doc.project && <span>• {doc.project}</span>}
-                    </div>
-                  </div>
-
-                  {/* Required Access Groups */}
-                  <div>
-                    <span className="text-[10px] text-slate-500 font-mono uppercase block mb-1">
-                      Required Groups:
-                    </span>
-                    <div className="flex gap-1 flex-wrap">
-                      {doc.required_groups && doc.required_groups.length > 0 ? (
-                        doc.required_groups.map((grp, i) => (
-                          <span
-                            key={i}
-                            className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
-                          >
-                            {grp}
-                          </span>
-                        ))
-                      ) : (
-                        <span className="text-[10px] font-mono text-slate-500">Tenant-Wide (No Group Needed)</span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <button
-                      onClick={() => openDoc(doc)}
-                      className="flex items-center gap-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>{doc.canAccess ? 'View Source' : 'View Policy'}</span>
-                    </button>
-
-                    {isAdmin && (
-                      <button
-                        onClick={() => openManageAccess(doc)}
-                        className="flex items-center gap-1 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5" />
-                        <span>Manage Access</span>
-                      </button>
-                    )}
-                  </div>
-
-                  <span className="text-[10px] font-mono text-slate-500">v{doc.version || '1.0'}</span>
-                </div>
+        /* ================= TOP-LEVEL KNOWLEDGE SOURCES (FOLDERS & STANDALONE FILES) ================= */
+        <div className="space-y-6">
+          {/* Folders Section */}
+          {folders.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-mono text-slate-400 uppercase tracking-wider px-1">
+                <Folder className="w-3.5 h-3.5 text-amber-400" />
+                <span>Uploaded Knowledge Folders ({folders.length})</span>
               </div>
-            );
-          })}
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {folders.map((folder) => (
+                  <div
+                    key={folder.id}
+                    onClick={() => {
+                      setCurrentFolder(folder);
+                      setFolderSearch('');
+                    }}
+                    className="card-clean card-interactive p-5 flex flex-col justify-between space-y-4 border border-amber-500/20 bg-gradient-to-br from-slate-900 via-slate-900 to-amber-950/20 hover:border-amber-500/40 cursor-pointer group shadow-sm transition-all"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="flex items-center gap-1.5 text-[10px] font-mono text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-md border border-amber-500/25 font-bold">
+                          <Folder className="w-3 h-3 text-amber-400 fill-amber-400/20" /> FOLDER
+                        </span>
+                        <span className="text-[11px] font-mono text-slate-400">
+                          {folder.files.length} {folder.files.length === 1 ? 'file' : 'files'}
+                        </span>
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm font-bold text-white group-hover:text-amber-300 transition-colors flex items-center gap-2">
+                          <span>{folder.name}</span>
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-1 line-clamp-2">
+                          Click to view all {folder.files.length} documents inside this folder in sequential order.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400 flex-wrap pt-1">
+                        <span className="px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-300">
+                          {folder.source_type}
+                        </span>
+                        <span>Dept: {folder.department}</span>
+                        {folder.project && <span>• {folder.project}</span>}
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between text-xs text-amber-400 font-semibold group-hover:text-amber-300">
+                      <span className="flex items-center gap-1">
+                        <FolderOpen className="w-3.5 h-3.5" />
+                        <span>Open Folder</span>
+                      </span>
+                      <ChevronRight className="w-4 h-4 text-slate-500 group-hover:text-amber-300 group-hover:translate-x-0.5 transition-all" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Standalone Files Section */}
+          {standaloneFiles.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2 text-xs font-mono text-slate-400 uppercase tracking-wider px-1">
+                <FileText className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Standalone Files ({standaloneFiles.length})</span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {standaloneFiles.map((doc) => (
+                  <div
+                    key={doc.id}
+                    className="card-clean card-interactive p-5 flex flex-col justify-between space-y-4"
+                  >
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <SecurityBadge classification={doc.classification} size="xs" />
+                        {doc.canAccess ? (
+                          <span className="flex items-center gap-1 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20 font-medium">
+                            <CheckCircle2 className="w-3 h-3" /> CLEARANCE GRANTED
+                          </span>
+                        ) : (
+                          <span className="flex items-center gap-1 text-[10px] font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-md border border-rose-500/20 font-medium">
+                            <Lock className="w-3 h-3" /> RESTRICTED
+                          </span>
+                        )}
+                      </div>
+
+                      <div>
+                        <h3 className="text-sm font-semibold text-white leading-snug line-clamp-2">
+                          {doc.title}
+                        </h3>
+                        <div className="flex items-center gap-2 mt-2 text-[11px] font-mono text-slate-400 flex-wrap">
+                          <span className="px-2 py-0.5 rounded bg-slate-900 border border-white/[0.06] text-slate-300">
+                            {doc.source_type}
+                          </span>
+                          <span>Dept: {doc.department || 'General'}</span>
+                          {doc.project && <span>• {doc.project}</span>}
+                        </div>
+                      </div>
+
+                      {/* Required Access Groups */}
+                      <div>
+                        <span className="text-[10px] text-slate-500 font-mono uppercase block mb-1">
+                          Required Groups:
+                        </span>
+                        <div className="flex gap-1 flex-wrap">
+                          {doc.required_groups && doc.required_groups.length > 0 ? (
+                            doc.required_groups.map((grp, i) => (
+                              <span
+                                key={i}
+                                className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20"
+                              >
+                                {grp}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] font-mono text-slate-500">Tenant-Wide (No Group Needed)</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="pt-3 border-t border-white/[0.06] flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => openDoc(doc)}
+                          className="flex items-center gap-1.5 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition-colors"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{doc.canAccess ? 'View Source' : 'View Policy'}</span>
+                        </button>
+
+                        {isAdmin && (
+                          <button
+                            onClick={() => openManageAccess(doc)}
+                            className="flex items-center gap-1 text-xs font-medium text-emerald-400 hover:text-emerald-300 transition-colors"
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5" />
+                            <span>Manage Access</span>
+                          </button>
+                        )}
+                      </div>
+
+                      <span className="text-[10px] font-mono text-slate-500">v{doc.version || '1.0'}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 

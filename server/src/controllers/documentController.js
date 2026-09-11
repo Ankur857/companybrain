@@ -16,7 +16,15 @@ export class DocumentController {
       const includeDemo = req.query.includeDemo === 'true';
       const actualDocs = (documents || []).filter((doc) => {
         if (includeDemo) return true;
-        const isSeedDoc = doc.id.startsWith('f1111111-') || doc.id.startsWith('f2222222-') || doc.id.startsWith('f3333333-') || doc.is_demo === true;
+        const isSeedDoc =
+          doc.id.startsWith('f1111111-') ||
+          doc.id.startsWith('f2222222-') ||
+          doc.id.startsWith('f3333333-') ||
+          doc.is_demo === true ||
+          doc.is_mock === true ||
+          doc.title?.includes('Executive & Employee Salary') ||
+          doc.title?.includes('Corporate Employee Benefits') ||
+          doc.title?.includes('Engineering Headcount and Strategic Hiring');
         return !isSeedDoc;
       });
 

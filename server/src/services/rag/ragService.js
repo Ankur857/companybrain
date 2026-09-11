@@ -357,21 +357,18 @@ export class RAGService {
 
     const docIds = new Set((knowledgeRows || []).map((k) => k.document_id));
 
-    // Fetch candidate project documents (both via project_knowledge and direct project tag)
+    // Fetch candidate project documents (strictly those attached via project_knowledge, excluding mock documents)
     const { data: allTenantDocs } = await db.from('documents').select('*').eq('tenant_id', tenantId);
-    const projectNameLower = (project.name || '').trim().toLowerCase();
-    const projectCodeLower = (project.code || '').trim().toLowerCase();
 
     const candidateDocs = (allTenantDocs || []).filter((d) => {
-      if (docIds.has(d.id)) return true;
-      if (d.metadata?.projectId === project_id) return true;
-      if (d.project) {
-        const docProjLower = d.project.trim().toLowerCase();
-        if (docProjLower === projectNameLower) return true;
-        if (projectCodeLower && docProjLower === projectCodeLower) return true;
-        if (d.project === project_id) return true;
-      }
-      return false;
+      if (!docIds.has(d.id)) return false;
+      const isMock =
+        d.is_demo === true ||
+        d.is_mock === true ||
+        d.id.startsWith('f1111111-') ||
+        d.id.startsWith('f2222222-') ||
+        d.id.startsWith('f3333333-');
+      return !isMock;
     });
 
     if (candidateDocs.length === 0) {

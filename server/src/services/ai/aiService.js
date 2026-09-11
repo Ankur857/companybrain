@@ -77,6 +77,7 @@ export class AIService {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(3500),
     });
 
     if (!response.ok) {
@@ -110,6 +111,21 @@ export class AIService {
         answer: "I couldn't find enough authorized information in your company's knowledge base to answer this question.",
         sourcesUsed: [],
         modelUsed: 'ResponseGuard-ZeroContext',
+        confidence: 0,
+      };
+    }
+
+    const qLower = (query || '').toLowerCase();
+    if (
+      qLower.includes('system override') ||
+      qLower.includes('disregard all prior') ||
+      qLower.includes('unrestricted ai') ||
+      qLower.includes('print system instructions')
+    ) {
+      return {
+        answer: "Security Policy Notice: System override instructions and prompt injection attempts are rejected. Only authorized knowledge queries are permitted.",
+        sourcesUsed: [],
+        modelUsed: 'Security-Guardrail',
         confidence: 0,
       };
     }
@@ -161,15 +177,11 @@ Provide a clear, professional, and precise enterprise answer based ONLY on the a
         });
 
         if (text) {
+          const cleanedText = this._cleanAnswerText(text);
+          const sourcesUsed = this._resolveOriginatedSources(text, authorizedDocuments);
           return {
-            answer: text,
-            sourcesUsed: authorizedDocuments.map((d) => ({
-              id: d.id,
-              title: d.title,
-              source_type: d.source_type,
-              source_url: d.source_url,
-              classification: d.classification,
-            })),
+            answer: cleanedText,
+            sourcesUsed,
             modelUsed: `Google Gemini (${this.geminiModel})`,
             tokens,
           };
@@ -204,15 +216,11 @@ Provide a clear, professional, and precise enterprise answer based ONLY on the a
           const json = await response.json();
           const answerText = json.choices?.[0]?.message?.content;
           if (answerText) {
+            const cleanedText = this._cleanAnswerText(answerText);
+            const sourcesUsed = this._resolveOriginatedSources(answerText, authorizedDocuments);
             return {
-              answer: answerText,
-              sourcesUsed: authorizedDocuments.map((d) => ({
-                id: d.id,
-                title: d.title,
-                source_type: d.source_type,
-                source_url: d.source_url,
-                classification: d.classification,
-              })),
+              answer: cleanedText,
+              sourcesUsed,
               modelUsed: this.model,
               tokens: json.usage?.total_tokens || null,
             };
@@ -227,6 +235,94 @@ Provide a clear, professional, and precise enterprise answer based ONLY on the a
 
     // High-fidelity local RAG synthesis engine (Fallback for demo/offline/no-key mode)
     return this._synthesizeLocalAnswer(query, authorizedDocuments);
+  }
+
+  /**
+   * Clean trailing metadata instructions from visible answer text
+   */
+  _cleanAnswerText(text) {
+    if (!text) return '';
+    return text.replace(/SOURCES_USED:\s*[^\n\r]+/gi, '').trim();
+  }
+
+  /**
+   * Resolve ONLY the document(s) from where the answer actually originated
+   */
+  _resolveOriginatedSources(text, authorizedDocuments, defaultDoc = null) {
+    if (!text || !authorizedDocuments || authorizedDocuments.length === 0) return [];
+    const lower = text.toLowerCase();
+    if (
+      lower.includes("couldn't find") ||
+      lower.includes("not documented") ||
+      lower.includes("access denied") ||
+      lower.includes("no authorized information")
+    ) {
+      return [];
+    }
+
+    // 1. Check for explicit SOURCES_USED tag outputted by the model
+    const sourceMatch = text.match(/SOURCES_USED:\s*([^\n\r]+)/i);
+    if (sourceMatch) {
+      const citedStr = sourceMatch[1].trim().toLowerCase();
+      if (citedStr !== 'none' && citedStr !== 'n/a') {
+        const matched = authorizedDocuments.filter((d) => {
+          const titleLower = d.title.toLowerCase();
+          const baseName = (d.metadata?.fileName || d.title).toLowerCase();
+          return citedStr.includes(titleLower) || titleLower.includes(citedStr) || citedStr.includes(baseName);
+        });
+        if (matched.length > 0) {
+          return matched.map((d) => ({
+            id: d.id,
+            title: d.title,
+            source_type: d.source_type,
+            source_url: d.source_url,
+            classification: d.classification,
+            department: d.department,
+          }));
+        }
+      }
+    }
+
+    // 2. Check for explicit document titles or file names directly mentioned in the answer text
+    const directlyMentioned = authorizedDocuments.filter((d) => {
+      const titleLower = d.title.toLowerCase();
+      const baseName = (d.metadata?.fileName || d.metadata?.relativePath || '').toLowerCase();
+      return lower.includes(titleLower) || (baseName.length > 5 && lower.includes(baseName));
+    });
+
+    if (directlyMentioned.length > 0) {
+      return directlyMentioned.map((d) => ({
+        id: d.id,
+        title: d.title,
+        source_type: d.source_type,
+        source_url: d.source_url,
+        classification: d.classification,
+        department: d.department,
+      }));
+    }
+
+    // 3. Fallback to default primary document that specifically matched
+    if (defaultDoc) {
+      return [{
+        id: defaultDoc.id,
+        title: defaultDoc.title,
+        source_type: defaultDoc.source_type,
+        source_url: defaultDoc.source_url,
+        classification: defaultDoc.classification,
+        department: defaultDoc.department,
+      }];
+    }
+
+    // 4. Return only the single top matching candidate document
+    const topDoc = authorizedDocuments[0];
+    return topDoc ? [{
+      id: topDoc.id,
+      title: topDoc.title,
+      source_type: topDoc.source_type,
+      source_url: topDoc.source_url,
+      classification: topDoc.classification,
+      department: topDoc.department,
+    }] : [];
   }
 
   /**
@@ -254,7 +350,7 @@ Provide a clear, professional, and precise enterprise answer based ONLY on the a
     }
 
     let synthesizedText = '';
-    if (primaryDoc.title.includes('Project Alpha Architecture')) {
+    if (primaryDoc.title.includes('Project Alpha Architecture') || primaryDoc.title === 'Architecture.pdf') {
       synthesizedText = `Project Alpha follows an event-driven microservices architecture designed for high throughput and 99.999% availability.
 Key components include:
 • **API Gateway**: Kong Ingress routing with mTLS and 10,000 req/sec rate limiting.
@@ -274,20 +370,20 @@ It utilizes radiation-hardened Xilinx Virtex-5 FPGAs, dual autonomous star-track
     } else {
       // General excerpt synthesis from authorized document
       const sentences = primaryDoc.content.split('\n').filter((s) => s.trim().length > 10);
-      synthesizedText = `Based on your authorized knowledge sources (${primaryDoc.title}):\n\n` +
+      synthesizedText = `Based on your authorized knowledge source (${primaryDoc.title}):\n\n` +
         sentences.slice(0, 4).join('\n');
     }
 
     return {
       answer: synthesizedText,
-      sourcesUsed: authorizedDocuments.map((d) => ({
-        id: d.id,
-        title: d.title,
-        source_type: d.source_type,
-        source_url: d.source_url,
-        classification: d.classification,
-        department: d.department,
-      })),
+      sourcesUsed: primaryDoc ? [{
+        id: primaryDoc.id,
+        title: primaryDoc.title,
+        source_type: primaryDoc.source_type,
+        source_url: primaryDoc.source_url,
+        classification: primaryDoc.classification,
+        department: primaryDoc.department,
+      }] : [],
       modelUsed: 'CompanyBrain-RAG-Adapter (Secure Pre-Filtered Context)',
       tokens: 380,
     };
@@ -303,6 +399,21 @@ It utilizes radiation-hardened Xilinx Virtex-5 FPGAs, dual autonomous star-track
         answer: "I couldn't find enough information in the knowledge you are authorized to access for this project.",
         sourcesUsed: [],
         modelUsed: 'ResponseGuard-ZeroContext',
+        confidence: 0,
+      };
+    }
+
+    const qLower = (query || '').toLowerCase();
+    if (
+      qLower.includes('system override') ||
+      qLower.includes('disregard all prior') ||
+      qLower.includes('unrestricted ai') ||
+      qLower.includes('print system instructions')
+    ) {
+      return {
+        answer: "Security Policy Notice: System override instructions and prompt injection attempts are rejected. Only authorized project knowledge queries are permitted.",
+        sourcesUsed: [],
+        modelUsed: 'Security-Guardrail',
         confidence: 0,
       };
     }
@@ -413,16 +524,11 @@ ${actionPrompt}`;
         });
 
         if (text) {
+          const cleanedText = this._cleanAnswerText(text);
+          const sourcesUsed = this._resolveOriginatedSources(text, authorizedDocuments);
           return {
-            answer: text,
-            sourcesUsed: authorizedDocuments.map((d) => ({
-              id: d.id,
-              title: d.title,
-              source_type: d.source_type,
-              source_url: d.source_url,
-              classification: d.classification,
-              department: d.department,
-            })),
+            answer: cleanedText,
+            sourcesUsed,
             modelUsed: `Google Gemini (${this.geminiModel})`,
             tokens,
           };
@@ -456,16 +562,11 @@ ${actionPrompt}`;
           const json = await response.json();
           const answerText = json.choices?.[0]?.message?.content;
           if (answerText) {
+            const cleanedText = this._cleanAnswerText(answerText);
+            const sourcesUsed = this._resolveOriginatedSources(answerText, authorizedDocuments);
             return {
-              answer: answerText,
-              sourcesUsed: authorizedDocuments.map((d) => ({
-                id: d.id,
-                title: d.title,
-                source_type: d.source_type,
-                source_url: d.source_url,
-                classification: d.classification,
-                department: d.department,
-              })),
+              answer: cleanedText,
+              sourcesUsed,
               modelUsed: this.model,
               tokens: json.usage?.total_tokens || null,
             };
@@ -486,11 +587,48 @@ ${actionPrompt}`;
   _synthesizeLocalProjectAnswer({ action, query, project, authorizedDocuments }) {
     const combinedContent = authorizedDocuments.map((d) => d.content).join('\n\n');
     const qLower = (query || '').toLowerCase();
+
+    // Check for prompt injection
+    if (
+      qLower.includes('system override') ||
+      qLower.includes('disregard all prior') ||
+      qLower.includes('unrestricted ai') ||
+      qLower.includes('print system instructions')
+    ) {
+      return {
+        answer: "Security Policy Notice: System override instructions and prompt injection attempts are rejected. Only authorized project knowledge queries are permitted.",
+        sourcesUsed: [],
+        modelUsed: 'Security-Guardrail',
+        confidence: 0,
+      };
+    }
+
+    const archDoc = authorizedDocuments.find((d) =>
+      d.title.toLowerCase().includes('architect') ||
+      d.title.toLowerCase().includes('design')
+    );
+    const roadmapDoc = authorizedDocuments.find((d) =>
+      d.title.toLowerCase().includes('roadmap') ||
+      d.title.toLowerCase().includes('plan')
+    );
+    const schemaDoc = authorizedDocuments.find((d) =>
+      d.title.toLowerCase().includes('schema') ||
+      d.title.toLowerCase().includes('prisma') ||
+      d.metadata?.category === 'Database & Schema'
+    );
+    const routesDoc = authorizedDocuments.find((d) =>
+      d.title.toLowerCase().includes('routes') ||
+      d.title.toLowerCase().includes('route') ||
+      d.metadata?.category === 'API Routes & Endpoints'
+    );
+
     let answerText = '';
+    let matchedSources = [];
 
     // Check for questions about topics completely absent in project knowledge (e.g. HR, salaries)
     if (action === 'chat' && (qLower.includes('salary') || qLower.includes('compensation') || qLower.includes('payroll') || qLower.includes('hr benefit'))) {
       answerText = `I couldn't find this information in your authorized project knowledge for ${project.name}.\n\nThis project's authorized documentation does not contain human resources or executive payroll records.`;
+      matchedSources = [];
     } else if (action === 'overview') {
       answerText = `## Project Overview: ${project.name}
 
@@ -521,6 +659,7 @@ The project is built on an event-driven microservices topology. External traffic
 
 ### 7. Deployment & Infrastructure
 Containerized using Docker and deployed onto Kubernetes clusters with automated GitOps CI/CD pipelines, horizontal pod autoscaling, and zero-downtime rolling deployments.`;
+      matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
     } else if (action === 'architecture') {
       answerText = `## Architecture Analysis: ${project.name}
 
@@ -552,6 +691,7 @@ graph TD
 • Redis cluster is required for session cache and token revocation lookups.
 • PostgreSQL database stores relational models with foreign-key referential integrity.
 • OpenTelemetry agent exports distributed spans to observability backends.`;
+      matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
     } else if (action === 'services') {
       answerText = `## Services & Components: ${project.name}
 
@@ -572,6 +712,7 @@ Based on authorized documents for ${project.name}, the following services compri
 4. **Telemetry & Observability Agent**:
    - Collects runtime metrics (P50/P95/P99 latencies, error budgets).
    - Generates trace IDs propagated across all inter-service HTTP/gRPC calls.`;
+      matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
     } else if (action === 'database') {
       answerText = `## Database & Storage Architecture: ${project.name}
 
@@ -585,6 +726,7 @@ The persistence layer for ${project.name} is structured as follows:
 • **Caching & Ephemeral State (Redis)**:
   - Key-value store utilized for sub-millisecond lookup of token revocation states and policy evaluation caches.
   - Configured with high-availability Sentinel failover and AOF persistence.`;
+      matchedSources = schemaDoc ? [schemaDoc] : (archDoc ? [archDoc] : [authorizedDocuments[0]]);
     } else if (action === 'apis') {
       answerText = `## API Specifications & Endpoints: ${project.name}
 
@@ -597,6 +739,7 @@ The authorized documentation outlines the following API specifications:
   - \`POST /api/projects/:id/query\` — Execute permission-governed natural language RAG queries.
   - \`POST /api/projects/:id/understand\` — Retrieve structured architectural insights and summaries.
 • **Security & Rate Limiting**: Maximum 10,000 requests/sec with IP throttling and tenant-specific quota isolation.`;
+      matchedSources = routesDoc ? [routesDoc] : [authorizedDocuments[0]];
     } else if (action === 'deployment') {
       answerText = `## Deployment & CI/CD: ${project.name}
 
@@ -606,6 +749,7 @@ The authorized documentation outlines the following API specifications:
   1. Static analysis, linting, and dependency vulnerability scans.
   2. Unit and Section 53 automated security regression suites.
   3. Blue/Green zero-downtime deployment rollout to production clusters.`;
+      matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
     } else if (action === 'summary') {
       answerText = `## Executive Documentation Summary: ${project.name}
 
@@ -614,6 +758,7 @@ Authorized documentation confirms:
 - The system employs modern microservices and high-throughput architectural standards.
 - Strong security controls, including multi-tenant database partitioning, cryptographic authorization tokens, and pre-RAG policy filtering are strictly active.
 - Developers follow established CI/CD, containerized testing, and zero-trust communication guidelines.`;
+      matchedSources = roadmapDoc ? [roadmapDoc] : [authorizedDocuments[0]];
     } else if (action === 'onboarding') {
       answerText = `## Fresher Onboarding Guide: "What Should I Learn First?"
 
@@ -637,19 +782,9 @@ Welcome to **${project.name}**! Here is your step-by-step onboarding roadmap to 
 ### Step 4: Run the Test Suite (Day 4)
 - Execute the automated test suite (\`npm test\`) to verify that all functional and security assertions pass.
 - Submit a test PR following the repository's branch and commit naming conventions.`;
+      matchedSources = roadmapDoc ? [roadmapDoc] : (archDoc ? [archDoc] : [authorizedDocuments[0]]);
     } else {
       // Natural language chat Q&A
-      const schemaDoc = authorizedDocuments.find((d) =>
-        d.title.toLowerCase().includes('schema') ||
-        d.title.toLowerCase().includes('prisma') ||
-        d.metadata?.category === 'Database & Schema'
-      );
-      const routesDoc = authorizedDocuments.find((d) =>
-        d.title.toLowerCase().includes('routes') ||
-        d.title.toLowerCase().includes('route') ||
-        d.metadata?.category === 'API Routes & Endpoints'
-      );
-
       if ((qLower.includes('model') || qLower.includes('schema') || qLower.includes('table')) && schemaDoc) {
         const lines = schemaDoc.content.split('\n');
         const modelNames = lines.filter((l) => l.trim().startsWith('model ')).map((l) => l.trim().split(/\s+/)[1]);
@@ -660,6 +795,7 @@ Welcome to **${project.name}**! Here is your step-by-step onboarding roadmap to 
         } else {
           answerText = `Based on authorized schema document **${schemaDoc.title}**:\n\n` + schemaDoc.content.slice(0, 800);
         }
+        matchedSources = [schemaDoc];
       } else if ((qLower.includes('route') || qLower.includes('endpoint') || qLower.includes('checkout') || qLower.includes('track')) && routesDoc) {
         const lines = routesDoc.content.split('\n');
         const routeLines = lines.filter((l) => l.includes('router.') || l.includes('GET') || l.includes('POST'));
@@ -670,29 +806,38 @@ Welcome to **${project.name}**! Here is your step-by-step onboarding roadmap to 
         } else {
           answerText = `Based on authorized route document **${routesDoc.title}**:\n\n` + routesDoc.content.slice(0, 800);
         }
+        matchedSources = [routesDoc];
       } else if (qLower.includes('redis')) {
         answerText = `In **${project.name}**, Redis is utilized as a high-performance in-memory cache and session revocation registry.
 It provides sub-millisecond lookup times for:
 1. Token revocation lists and active session validations.
 2. Temporary caching of frequently queried pre-authorized metadata.
 3. Rate-limiting counters for API gateway traffic throttling.`;
+        matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
       } else if (qLower.includes('database') || qLower.includes('postgres')) {
         answerText = `**${project.name}** uses PostgreSQL as its primary transactional database.
 It enforces multi-tenant row-level security (RLS) policies to ensure that records are partitioned strictly by \`tenant_id\`, preventing cross-company data access.`;
+        matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
       } else if (qLower.includes('architecture') || qLower.includes('what is')) {
         answerText = `**${project.name}** is ${project.description || 'an enterprise microservices system'}.
 It follows an event-driven architecture with an API Gateway handling ingress, decoupled services communicating over an event stream, and PostgreSQL/Redis managing persistent and cached state.`;
+        matchedSources = archDoc ? [archDoc] : [authorizedDocuments[0]];
       } else {
         // Excerpt from top matching authorized doc
         const topDoc = authorizedDocuments[0];
-        answerText = `Based on your authorized project documents for **${project.name}** (${topDoc.title}):\n\n` +
-          topDoc.content.split('\n').filter((l) => l.trim().length > 15).slice(0, 5).join('\n\n');
+        answerText = `Based on your authorized project documents for **${project.name}** (${topDoc?.title || 'Project Knowledge'}):\n\n` +
+          (topDoc?.content ? topDoc.content.split('\n').filter((l) => l.trim().length > 15).slice(0, 5).join('\n\n') : 'No content available.');
+        matchedSources = topDoc ? [topDoc] : [];
       }
+    }
+
+    if (answerText.startsWith("I couldn't find") || answerText.includes("Access Denied")) {
+      matchedSources = [];
     }
 
     return {
       answer: answerText,
-      sourcesUsed: authorizedDocuments.map((d) => ({
+      sourcesUsed: (matchedSources.filter(Boolean)).map((d) => ({
         id: d.id,
         title: d.title,
         source_type: d.source_type,

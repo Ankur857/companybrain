@@ -133,7 +133,7 @@ export function ProjectIntelligence() {
             content: `Hello **${user?.name || 'Engineer'}**! Welcome to **${projRes?.project?.name || 'this project'}** intelligence.
 I have assembled all verified documents linked to this project that you have security clearance to access.
 Use the quick action buttons above to explore the architecture, services, database, and APIs, or ask me any question below!`,
-            sources: knowRes.knowledge?.map(k => k.document).filter(Boolean) || [],
+            sources: [],
             securityDetails: {
               level1: 'Direct/Group Membership Cleared',
               level2: 'Zero-Trust Document Clearance Applied'

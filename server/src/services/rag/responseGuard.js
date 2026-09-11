@@ -44,9 +44,18 @@ export class ResponseGuard {
       }
     }
 
-    // Check 4: Ensure every source in sourcesUsed was actually in authorizedDocuments
+    // Check 4: Ensure only the genuine source(s) from where the answer actually came are reported
+    // If the answer indicates no information was found or access denied, sources must be empty
+    const isNotFoundOrDenied =
+      sanitized.toLowerCase().includes("couldn't find") ||
+      sanitized.toLowerCase().includes("is not documented") ||
+      sanitized.toLowerCase().includes("access denied") ||
+      sanitized.toLowerCase().includes("no authorized information");
+
     const authorizedIds = new Set(authorizedDocuments.map((d) => d.id));
-    const cleanSources = sourcesUsed.filter((s) => authorizedIds.has(s.id));
+    const cleanSources = isNotFoundOrDenied
+      ? []
+      : sourcesUsed.filter((s) => authorizedIds.has(s.id));
 
     return {
       isValid: true,

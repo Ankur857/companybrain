@@ -511,38 +511,12 @@ export class ProjectController {
 
       const { data: allDocs } = await db.from('documents').select('*').eq('tenant_id', tenantId);
 
-      // Match documents: explicitly attached via project_knowledge OR tagged by project name/code/id
-      const projectNameLower = (project.name || '').trim().toLowerCase();
-      const projectCodeLower = (project.code || '').trim().toLowerCase();
-
+      // ONLY return documents explicitly attached to this project by the admin, excluding any mock/demo documents
       const attachedDocs = (allDocs || []).filter((d) => {
-        if (attachedDocIds.has(d.id)) return true;
-        if (d.metadata?.projectId === id) return true;
-        if (d.project) {
-          const docProjLower = d.project.trim().toLowerCase();
-          if (docProjLower === projectNameLower) return true;
-          if (projectCodeLower && docProjLower === projectCodeLower) return true;
-          if (d.project === id) return true;
-        }
-        return false;
+        if (!attachedDocIds.has(d.id)) return false;
+        const isMock = d.is_demo === true || d.is_mock === true || d.id.startsWith('f1111111-') || d.id.startsWith('f2222222-') || d.id.startsWith('f3333333-');
+        return !isMock;
       });
-
-      // Synchronize any newly matched documents into project_knowledge for consistency
-      for (const doc of attachedDocs) {
-        if (!attachedDocIds.has(doc.id)) {
-          try {
-            await db.from('project_knowledge').insert({
-              id: crypto.randomUUID(),
-              project_id: id,
-              document_id: doc.id,
-              created_at: new Date().toISOString(),
-            });
-            attachedDocIds.add(doc.id);
-          } catch (syncErr) {
-            // Non-blocking
-          }
-        }
-      }
 
       // Evaluate clearance for current user
       const evaluated = attachedDocs.map((doc) => {
@@ -582,14 +556,16 @@ export class ProjectController {
         success: true,
         knowledge: evaluated,
         allTenantDocs: ['Company Admin', 'Super Admin'].includes(req.user.role_name)
-          ? (allDocs || []).map((d) => ({
-              id: d.id,
-              title: d.title,
-              source_type: d.source_type,
-              classification: d.classification,
-              department: d.department,
-              project: d.project,
-            }))
+          ? (allDocs || [])
+              .filter((d) => !d.is_mock && !d.is_demo && !d.id.startsWith('f1111111-') && !d.id.startsWith('f2222222-') && !d.id.startsWith('f3333333-'))
+              .map((d) => ({
+                id: d.id,
+                title: d.title,
+                source_type: d.source_type,
+                classification: d.classification,
+                department: d.department,
+                project: d.project,
+              }))
           : [],
       });
     } catch (err) {
