@@ -6,12 +6,15 @@ export class GoogleDriveConnector extends BaseConnector {
     this.type = 'google_drive';
     this.name = 'Google Drive';
 
-    this.clientId = (this.config.clientId && this.config.clientId !== 'undefined')
+    const rawClientId = (this.config.clientId && this.config.clientId !== 'undefined')
       ? this.config.clientId
       : process.env.GOOGLE_CLIENT_ID;
-    this.clientSecret = (this.config.clientSecret && this.config.clientSecret !== 'undefined')
+    const rawClientSecret = (this.config.clientSecret && this.config.clientSecret !== 'undefined')
       ? this.config.clientSecret
       : process.env.GOOGLE_CLIENT_SECRET;
+
+    this.clientId = rawClientId ? String(rawClientId).trim().replace(/^["']|["']$/g, '') : undefined;
+    this.clientSecret = rawClientSecret ? String(rawClientSecret).trim().replace(/^["']|["']$/g, '') : undefined;
   }
 
   isConfigured() {
@@ -23,9 +26,11 @@ export class GoogleDriveConnector extends BaseConnector {
       throw new Error('Google Drive integration is not configured. Missing GOOGLE_CLIENT_ID.');
     }
 
+    const cleanRedirectUri = redirectUri ? String(redirectUri).trim().replace(/^["']|["']$/g, '') : '';
+
     const params = new URLSearchParams({
       client_id: this.clientId,
-      redirect_uri: redirectUri,
+      redirect_uri: cleanRedirectUri,
       response_type: 'code',
       scope: [
         'https://www.googleapis.com/auth/drive.readonly',
@@ -34,7 +39,7 @@ export class GoogleDriveConnector extends BaseConnector {
       ].join(' '),
       access_type: 'offline',
       prompt: 'consent',
-      state,
+      state: String(state || '').trim(),
     });
 
     return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
@@ -52,7 +57,7 @@ export class GoogleDriveConnector extends BaseConnector {
         code,
         client_id: this.clientId,
         client_secret: this.clientSecret,
-        redirect_uri: redirectUri,
+        redirect_uri: String(redirectUri || '').trim(),
         grant_type: 'authorization_code',
       }),
     });
