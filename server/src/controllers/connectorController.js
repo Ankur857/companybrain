@@ -117,9 +117,10 @@ export class ConnectorController {
       };
       const state = Buffer.from(JSON.stringify(statePayload)).toString('base64url');
 
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.get('host');
-      const redirectUri = `${protocol}://${host}/api/connectors/oauth/${provider}/callback`;
+      const baseUrl = (process.env.APP_URL && process.env.APP_URL.trim())
+        ? process.env.APP_URL.replace(/\/+$/, '')
+        : `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+      const redirectUri = `${baseUrl}/api/connectors/oauth/${provider}/callback`;
 
       const adapter = ConnectorFactory.create(
         provider,
@@ -160,9 +161,10 @@ export class ConnectorController {
       }
 
       const { tenantId, userId } = stateObj;
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
-      const host = req.get('host');
-      const redirectUri = `${protocol}://${host}/api/connectors/oauth/${provider}/callback`;
+      const baseUrl = (process.env.APP_URL && process.env.APP_URL.trim())
+        ? process.env.APP_URL.replace(/\/+$/, '')
+        : `${req.headers['x-forwarded-proto'] || req.protocol}://${req.get('host')}`;
+      const redirectUri = `${baseUrl}/api/connectors/oauth/${provider}/callback`;
 
       const adapter = ConnectorFactory.create(provider, {}, null, false);
       const authResult = await adapter.handleOAuthCallback(code, redirectUri);
