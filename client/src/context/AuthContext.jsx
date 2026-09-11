@@ -33,21 +33,9 @@ export function AuthProvider({ children }) {
           if (compRes.success) setCompanies(compRes.companies || []);
         } catch (_) {}
       } else {
-        // Auto-login as Rahul Sharma for instant demo experience if no session
-        const rahulPersona = personasRes.status === 'fulfilled'
-          ? personasRes.value.personas?.find((p) => p.email === 'rahul@acme.com')
-          : null;
-
-        if (rahulPersona) {
-          const loginRes = await api.login(rahulPersona.email, 'Password123!');
-          if (loginRes.success) {
-            localStorage.setItem('companybrain_token', loginRes.token);
-            setUser(loginRes.user);
-            setTenant(loginRes.tenant);
-            const compRes = await api.getCompanies();
-            if (compRes.success) setCompanies(compRes.companies || []);
-          }
-        }
+        // Unauthenticated guest user - show public landing page
+        setUser(null);
+        setTenant(null);
       }
     } catch (err) {
       console.error('Error loading initial auth context:', err);
