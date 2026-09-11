@@ -11,6 +11,7 @@ import { AuditController } from '../controllers/auditController.js';
 import { PolicyController } from '../controllers/policyController.js';
 import { SystemController } from '../controllers/systemController.js';
 import { ProjectController } from '../controllers/projectController.js';
+import { ExperienceController } from '../controllers/experienceController.js';
 
 const router = express.Router();
 
@@ -128,5 +129,18 @@ router.delete('/projects/:id/knowledge/:docId', authenticate, requireAdmin, Proj
 router.post('/projects/:id/query', authenticate, ProjectController.queryProject);
 router.post('/projects/:id/understand', authenticate, ProjectController.understandProject);
 router.post('/projects/:id/upload-zip', authenticate, requireAdmin, ProjectController.uploadProjectZip);
+
+// ================= EXPERIENCES (CONTINUOUS KNOWLEDGE) =================
+router.get('/experiences', authenticate, ExperienceController.getAll);
+router.get('/experiences/authorized-options', authenticate, ExperienceController.getAuthorizedOptions);
+router.post('/experiences', authenticate, ExperienceController.create);
+router.get('/experiences/my-submissions', authenticate, ExperienceController.getMySubmissions);
+router.get('/experiences/admin/approvals', authenticate, requireAdmin, ExperienceController.getAdminApprovals);
+router.get('/experiences/:id', authenticate, ExperienceController.getById);
+router.post('/experiences/:id/approve', authenticate, requireAdmin, ExperienceController.approve);
+router.post('/experiences/:id/reject', authenticate, requireAdmin, ExperienceController.reject);
+router.put('/experiences/:id', authenticate, ExperienceController.update);
+router.delete('/experiences/:id', authenticate, ExperienceController.delete);
+router.post('/experiences/ai-assist', authenticate, ExperienceController.aiAssist);
 
 export default router;

@@ -444,12 +444,33 @@ export class RAGService {
       };
     }
 
-    // 5. CALL AI SERVICE WITH ONLY AUTHORIZED PROJECT KNOWLEDGE
+    // 4b. FETCH AUTHORIZED VERIFIED TEAM EXPERIENCES
+    const { data: projectExps } = await db
+      .from('experiences')
+      .select('*')
+      .eq('project_id', project_id)
+      .eq('tenant_id', tenantId)
+      .eq('status', 'APPROVED');
+
+    const authorizedDocIdSet = new Set(authorized.map((d) => d.id));
+    const verifiedExperiences = (projectExps || [])
+      .filter((exp) => authorizedDocIdSet.has(exp.related_document_id))
+      .map((exp) => ({
+        id: exp.id,
+        title: `[Verified Experience] ${exp.title}`,
+        content: `VERIFIED TEAM EXPERIENCE:\nTitle: ${exp.title}\nAuthor: ${exp.author_name}\nProblem: ${exp.problem}\nSolution: ${exp.solution}\nLessons Learned: ${exp.additional_context || ''}`,
+        source_type: 'experience',
+        classification: 'INTERNAL',
+      }));
+
+    const combinedAuthorized = [...authorized, ...verifiedExperiences];
+
+    // 5. CALL AI SERVICE WITH ONLY AUTHORIZED PROJECT KNOWLEDGE & EXPERIENCES
     const aiResponse = await aiService.explainProject({
       action: action_type,
       query,
       project,
-      authorizedDocuments: authorized,
+      authorizedDocuments: combinedAuthorized,
       userContext: {
         name: user.name,
         department: user.department,

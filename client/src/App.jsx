@@ -18,6 +18,7 @@ import { AuditLogs } from './pages/AuditLogs';
 import { Architecture } from './pages/Architecture';
 import { Projects } from './pages/Projects';
 import { ProjectIntelligence } from './pages/ProjectIntelligence';
+import { Experience } from './pages/Experience';
 
 export default function App() {
   const { loading, user, isAuthModalOpen, closeAuthModal } = useAuth();
@@ -51,6 +52,7 @@ export default function App() {
             <Route path="/chat" element={<AIAssistant />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/projects/:id/understand" element={<ProjectIntelligence />} />
+            <Route path="/experience" element={<Experience />} />
             <Route path="/demo" element={<SecurityDemo />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/knowledge" element={<KnowledgeSources />} />

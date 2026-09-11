@@ -20,6 +20,7 @@ export function Sidebar() {
 
   const primaryNav = [
     { to: '/projects', label: 'Projects', icon: FolderKanban },
+    { to: '/experience', label: 'Experience', icon: Sparkles },
     { to: '/knowledge', label: 'Knowledge Sources', icon: FileText },
     { to: '/connectors', label: 'Connectors', icon: Link2 },
   ];

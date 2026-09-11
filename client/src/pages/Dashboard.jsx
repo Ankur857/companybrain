@@ -28,7 +28,9 @@ export function Dashboard() {
   const [stats, setStats] = useState(null);
   const [recentAudits, setRecentAudits] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [pendingExperiencesCount, setPendingExperiencesCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const isAdmin = ['Company Admin', 'Super Admin'].includes(user?.role_name);
 
   useEffect(() => {
     setLoading(true);
@@ -36,15 +38,17 @@ export function Dashboard() {
       api.getDashboardStats(),
       api.getAuditLogs({ limit: 6 }),
       api.getProjects().catch(() => ({ success: false, projects: [] })),
+      isAdmin ? api.getAdminExperienceApprovals('PENDING').catch(() => ({ experiences: [] })) : Promise.resolve({ experiences: [] }),
     ])
-      .then(([statsRes, auditsRes, projRes]) => {
+      .then(([statsRes, auditsRes, projRes, expsRes]) => {
         if (statsRes.success) setStats(statsRes.stats);
         if (auditsRes.success) setRecentAudits(auditsRes.logs || []);
         if (projRes.success) setProjects(projRes.projects || []);
+        if (expsRes?.experiences) setPendingExperiencesCount(expsRes.experiences.length);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
-  }, [tenant]);
+  }, [tenant, isAdmin]);
 
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
@@ -128,6 +132,35 @@ export function Dashboard() {
           </div>
         </div>
       </div>
+
+      {/* Admin Experience Approvals Banner / Card */}
+      {isAdmin && (
+        <div className="card-clean p-4 border border-amber-500/30 bg-gradient-to-r from-amber-500/10 via-slate-900 to-slate-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/30 flex items-center justify-center text-amber-400 shrink-0">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="text-xs font-bold text-white flex items-center gap-2">
+                <span>Experience Approvals</span>
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-mono font-bold border border-amber-500/30">
+                  {pendingExperiencesCount} Pending
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-400 mt-0.5">
+                Employees have submitted real technical experiences awaiting administrative verification.
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/experience"
+            className="px-3.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs flex items-center justify-center gap-1 transition-all shadow-sm shrink-0 cursor-pointer"
+          >
+            <span>Review Submissions</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+      )}
 
       {/* Projects & Fast Onboarding Section */}
       <div className="space-y-4">

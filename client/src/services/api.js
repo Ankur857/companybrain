@@ -147,4 +147,22 @@ export const api = {
   queryProjectRAG: (id, query) => request(`/projects/${id}/query`, { method: 'POST', body: JSON.stringify({ query }) }),
   understandProject: (id, action, query) => request(`/projects/${id}/understand`, { method: 'POST', body: JSON.stringify({ action, query }) }),
   uploadProjectZip: (id, data) => request(`/projects/${id}/upload-zip`, { method: 'POST', body: JSON.stringify(data) }),
+
+  // Experiences (Continuous Knowledge Platform)
+  getExperiences: (params = {}) => {
+    const query = new URLSearchParams(params).toString();
+    return request(`/experiences${query ? `?${query}` : ''}`);
+  },
+  getExperienceAuthorizedOptions: (projectId = '') =>
+    request(`/experiences/authorized-options${projectId ? `?projectId=${encodeURIComponent(projectId)}` : ''}`),
+  createExperience: (data) => request('/experiences', { method: 'POST', body: JSON.stringify(data) }),
+  getMyExperienceSubmissions: () => request('/experiences/my-submissions'),
+  getAdminExperienceApprovals: (status = 'PENDING') =>
+    request(`/experiences/admin/approvals?status=${encodeURIComponent(status)}`),
+  getExperience: (id) => request(`/experiences/${id}`),
+  approveExperience: (id) => request(`/experiences/${id}/approve`, { method: 'POST' }),
+  rejectExperience: (id, reason) => request(`/experiences/${id}/reject`, { method: 'POST', body: JSON.stringify({ reason }) }),
+  updateExperience: (id, data) => request(`/experiences/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteExperience: (id) => request(`/experiences/${id}`, { method: 'DELETE' }),
+  aiAssistExperience: (data) => request('/experiences/ai-assist', { method: 'POST', body: JSON.stringify(data) }),
 };
