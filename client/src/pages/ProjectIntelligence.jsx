@@ -29,7 +29,12 @@ import {
   Bot,
   User as UserIcon,
   HelpCircle,
-  GitFork
+  GitFork,
+  UploadCloud,
+  FolderArchive,
+  X,
+  FileCode,
+  Archive
 } from 'lucide-react';
 
 export function ProjectIntelligence() {
@@ -48,6 +53,16 @@ export function ProjectIntelligence() {
   const [evaluating, setEvaluating] = useState(false);
   const [currentAction, setCurrentAction] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+
+  // GitHub / Codebase Zip Upload Modal State
+  const [showZipModal, setShowZipModal] = useState(false);
+  const [zipFile, setZipFile] = useState(null);
+  const [zipRepoName, setZipRepoName] = useState('');
+  const [zipClassification, setZipClassification] = useState('Internal');
+  const [uploadingZip, setUploadingZip] = useState(false);
+  const [zipProgressText, setZipProgressText] = useState('');
+
+  const isAdmin = ['Company Admin', 'Super Admin'].includes(user?.role_name) || user?.is_super_admin || user?.role === 'admin';
 
   // Chat Conversation History
   const [messages, setMessages] = useState([]);
@@ -241,6 +256,95 @@ Use the quick action buttons above to explore the architecture, services, databa
     setTimeout(() => setCopiedId(null), 2000);
   };
 
+  const handleZipFileChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+      showToast('error', 'Please select a valid .zip archive file.');
+      return;
+    }
+    setZipFile(file);
+    if (!zipRepoName) {
+      setZipRepoName(file.name.replace(/\.zip$/i, ''));
+    }
+  };
+
+  const handleUploadZip = async (e) => {
+    e.preventDefault();
+    if (!zipFile) {
+      showToast('error', 'Please select a repository .zip archive first.');
+      return;
+    }
+
+    setUploadingZip(true);
+    setZipProgressText('Reading archive file into memory...');
+
+    try {
+      const reader = new FileReader();
+      const base64Promise = new Promise((resolve, reject) => {
+        reader.onload = () => {
+          const result = reader.result;
+          const base64 = typeof result === 'string' && result.includes(',')
+            ? result.split(',')[1]
+            : result;
+          resolve(base64);
+        };
+        reader.onerror = (err) => reject(err);
+      });
+
+      reader.readAsDataURL(zipFile);
+      const base64Data = await base64Promise;
+
+      setZipProgressText('Unpacking codebase, filtering binaries & compiling architecture manifest...');
+      const res = await api.uploadProjectZip(id, {
+        zipData: base64Data,
+        repositoryName: zipRepoName.trim() || zipFile.name.replace(/\.zip$/i, ''),
+        classification: zipClassification
+      });
+
+      if (res.success) {
+        showToast('success', `Repository "${res.repositoryName}" unpacked! Ingested ${res.files_ingested} files.`);
+        
+        // Refresh project knowledge list
+        const knowRes = await api.getProjectKnowledge(id);
+        if (knowRes.success) {
+          setAuthorizedDocs(knowRes.knowledge || []);
+        }
+
+        // Add an executive summary message into the intelligence chat
+        const categorySummary = Object.entries(res.category_breakdown || {})
+          .map(([cat, count]) => `• **${cat}**: ${count} files`)
+          .join('\n');
+
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `asst_zip_${Date.now()}`,
+            sender: 'assistant',
+            timestamp: new Date().toISOString(),
+            content: `📦 **Repository Codebase Ingested Successfully!**\n\nI have unpacked and analyzed repository archive **${res.repositoryName}** (${res.files_ingested} code & doc files extracted):\n\n${categorySummary}\n\n✨ A master **Repository Architecture Manifest** has been synthesized and indexed. You can now immediately ask questions regarding schemas, API routes, configurations, and core components!`,
+            sources: res.documents || [],
+            documents_consulted: res.files_ingested,
+            securityDetails: {
+              level1: 'Direct Project Membership Cleared',
+              level2: `${res.files_ingested} Codebase Artifacts Cleared via Zero-Trust Policy`
+            }
+          }
+        ]);
+
+        setShowZipModal(false);
+        setZipFile(null);
+        setZipRepoName('');
+      }
+    } catch (err) {
+      console.error('Failed to upload codebase zip:', err);
+      showToast('error', err.message || 'Failed to unpack and ingest codebase zip');
+    } finally {
+      setUploadingZip(false);
+      setZipProgressText('');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center py-28 text-slate-400">
@@ -287,8 +391,18 @@ Use the quick action buttons above to explore the architecture, services, databa
           <span className="text-indigo-400 font-mono">Intelligence Engine</span>
         </div>
 
-        {/* Security Clearances Badge */}
+        {/* Security Clearances Badge & Codebase Upload */}
         <div className="flex items-center gap-2">
+          {isAdmin && (
+            <button
+              onClick={() => setShowZipModal(true)}
+              className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition-colors shadow-sm"
+              id="btn-upload-repo-zip"
+            >
+              <UploadCloud className="w-3.5 h-3.5" />
+              <span>Upload Repo (.zip)</span>
+            </button>
+          )}
           <span className="hidden sm:inline-flex items-center gap-1.5 text-[11px] font-mono px-2.5 py-1 rounded-md bg-emerald-500/10 text-emerald-300 border border-emerald-500/25">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
             <span>Level 1: Member Cleared</span>
@@ -576,9 +690,21 @@ Use the quick action buttons above to explore the architecture, services, databa
                   Authorized Knowledge
                 </h3>
               </div>
-              <span className="text-[10px] font-mono text-slate-400">
-                {authorizedDocs.length} Documents
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] font-mono text-slate-400">
+                  {authorizedDocs.length} Docs
+                </span>
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowZipModal(true)}
+                    title="Upload GitHub repository .zip archive"
+                    className="p-1 rounded hover:bg-white/[0.08] text-indigo-400 hover:text-indigo-300 transition-colors"
+                    id="btn-upload-repo-zip-small"
+                  >
+                    <UploadCloud className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
             </div>
 
             <p className="text-[11px] text-slate-400 leading-relaxed mb-3">
@@ -644,6 +770,139 @@ Use the quick action buttons above to explore the architecture, services, databa
           </div>
         </div>
       </div>
+
+      {/* Codebase Zip Upload Modal */}
+      {showZipModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="card-clean max-w-lg w-full p-6 relative border-slate-700 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-white/[0.08]">
+              <div className="flex items-center gap-2">
+                <FolderArchive className="w-5 h-5 text-indigo-400" />
+                <div>
+                  <h3 className="text-sm font-bold text-white">Upload GitHub Codebase (.zip)</h3>
+                  <p className="text-[11px] text-slate-400">
+                    Ingest repository source code directly for AI architectural understanding.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => !uploadingZip && setShowZipModal(false)}
+                disabled={uploadingZip}
+                className="text-slate-400 hover:text-white transition-colors disabled:opacity-50"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUploadZip} className="space-y-4">
+              {/* File Drop / Select Area */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  GitHub Archive File (.zip)
+                </label>
+                <div className="relative border-2 border-dashed border-white/[0.12] hover:border-indigo-500/50 rounded-xl p-6 text-center transition-colors cursor-pointer bg-slate-900/40">
+                  <input
+                    type="file"
+                    accept=".zip,application/zip"
+                    disabled={uploadingZip}
+                    onChange={handleZipFileChange}
+                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer disabled:cursor-not-allowed"
+                  />
+                  {zipFile ? (
+                    <div className="flex flex-col items-center gap-1.5 text-xs text-white">
+                      <FileCode className="w-8 h-8 text-emerald-400" />
+                      <span className="font-semibold text-emerald-300">{zipFile.name}</span>
+                      <span className="text-[10px] text-slate-400 font-mono">
+                        {(zipFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to unpack
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col items-center gap-1.5 text-xs text-slate-400">
+                      <UploadCloud className="w-8 h-8 text-indigo-400 mb-1" />
+                      <span className="text-slate-200 font-medium">Click or drag GitHub .zip here</span>
+                      <span className="text-[10px] text-slate-500">
+                        Downloaded from GitHub via "Code &gt; Download ZIP"
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Repository Name */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Repository Name (Identifier)
+                </label>
+                <input
+                  type="text"
+                  value={zipRepoName}
+                  disabled={uploadingZip}
+                  onChange={(e) => setZipRepoName(e.target.value)}
+                  placeholder="e.g. ecommerce-backend-main"
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-white/[0.08] text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              {/* Classification */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+                  Knowledge Classification
+                </label>
+                <select
+                  value={zipClassification}
+                  disabled={uploadingZip}
+                  onChange={(e) => setZipClassification(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900 border border-white/[0.08] text-xs text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="Internal">Internal (Company-wide access)</option>
+                  <option value="Confidential">Confidential (Project members only)</option>
+                  <option value="Restricted">Restricted (High-security clearance)</option>
+                  <option value="Public">Public (All verified roles)</option>
+                </select>
+              </div>
+
+              {/* Processing Info Banner */}
+              <div className="p-3 rounded-lg bg-slate-900/60 border border-white/[0.06] text-[11px] text-slate-400 space-y-1">
+                <div className="text-white font-medium flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Automatic Code Sanitization & Architecture Digest</span>
+                </div>
+                <p className="text-[10px] text-slate-400 leading-relaxed">
+                  Extracts documentation, schemas (prisma, sql), API routes, configs (package.json, docker), and source code. Automatically strips noise directories (node_modules, dist, .git) and binary assets.
+                </p>
+              </div>
+
+              {/* Progress status */}
+              {uploadingZip && (
+                <div className="p-3 rounded-lg bg-indigo-950/40 border border-indigo-500/30 flex items-center gap-2.5 text-xs text-indigo-300">
+                  <div className="w-4 h-4 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></div>
+                  <span>{zipProgressText || 'Processing codebase archive...'}</span>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-white/[0.08]">
+                <button
+                  type="button"
+                  disabled={uploadingZip}
+                  onClick={() => setShowZipModal(false)}
+                  className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition-colors disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploadingZip || !zipFile}
+                  className="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 transition-colors shadow-sm"
+                >
+                  <UploadCloud className="w-4 h-4" />
+                  <span>{uploadingZip ? 'Ingesting Codebase...' : 'Extract & Ingest Codebase'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

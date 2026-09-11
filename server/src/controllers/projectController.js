@@ -3,6 +3,7 @@ import { db } from '../database/db.js';
 import { RAGService } from '../services/rag/ragService.js';
 import { PolicyEngine } from '../services/policy/policyEngine.js';
 import { AuditService } from '../services/audit/auditService.js';
+import { ArchiveService } from '../services/ingestion/archiveService.js';
 
 export class ProjectController {
   /**
@@ -681,6 +682,141 @@ export class ProjectController {
       return res.status(result.decision === 'DENY' && !result.success ? 403 : 200).json(result);
     } catch (err) {
       console.error('ProjectController.understandProject error:', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  /**
+   * POST /api/projects/:id/upload-zip
+   * Admin only: Upload GitHub repo .zip file, unpack, and ingest files into Project Knowledge
+   */
+  static async uploadProjectZip(req, res) {
+    try {
+      const { id } = req.params;
+      const tenantId = req.user.tenant_id;
+      const { zipData, repositoryName, classification = 'INTERNAL', allowedGroupIds = [] } = req.body;
+
+      if (!zipData) {
+        return res.status(400).json({ success: false, error: 'Zip file data is required (base64 encoded).' });
+      }
+
+      const { data: project } = await db.from('projects').select('*').eq('id', id).single();
+      if (!project) return res.status(404).json({ success: false, error: 'Project not found.' });
+
+      if (project.tenant_id !== tenantId && req.user.role_name !== 'Super Admin') {
+        return res.status(403).json({ success: false, error: 'Forbidden: Tenant isolation boundary.' });
+      }
+
+      console.log(`[ProjectController] Unpacking repository zip for project: ${project.name}...`);
+      const { repositoryName: repoName, totalFiles, manifest, files, categoryBreakdown } = await ArchiveService.unpackRepositoryZip(
+        zipData,
+        { repositoryName: repositoryName || project.name }
+      );
+
+      if (totalFiles === 0) {
+        return res.status(400).json({
+          success: false,
+          error: 'No valid text or code files could be extracted from this zip archive.'
+        });
+      }
+
+      // 1. Ingest Manifest Document
+      const manifestId = crypto.randomUUID();
+      const manifestDoc = {
+        id: manifestId,
+        tenant_id: tenantId,
+        title: manifest.title,
+        content: manifest.content,
+        source_type: 'github_zip',
+        source_url: `github://${repoName}/manifest`,
+        department: 'Engineering',
+        project: project.name,
+        classification: classification || 'INTERNAL',
+        owner: req.user.email,
+        version: '1.0',
+        metadata: {
+          category: 'Documentation',
+          repository: repoName,
+          total_extracted_files: totalFiles,
+          uploaded_by: req.user.name,
+        },
+        required_groups: allowedGroupIds.length > 0 ? allowedGroupIds : [],
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      };
+      await db.from('documents').insert(manifestDoc);
+      await db.from('project_knowledge').insert({
+        project_id: id,
+        document_id: manifestId,
+        created_at: new Date().toISOString(),
+      });
+
+      // 2. Ingest Extracted Code and Documentation Files
+      let ingestedCount = 1;
+      for (const f of files) {
+        const docId = crypto.randomUUID();
+        const docRecord = {
+          id: docId,
+          tenant_id: tenantId,
+          title: `[${repoName}] ${f.path}`,
+          content: f.content,
+          source_type: 'github_zip',
+          source_url: `github://${repoName}/${f.path}`,
+          department: 'Engineering',
+          project: project.name,
+          classification: classification || 'INTERNAL',
+          owner: req.user.email,
+          version: '1.0',
+          metadata: {
+            filePath: f.path,
+            fileName: f.fileName,
+            category: f.category,
+            repository: repoName,
+            extension: f.extension,
+            sizeBytes: f.sizeBytes,
+          },
+          required_groups: allowedGroupIds.length > 0 ? allowedGroupIds : [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        };
+
+        await db.from('documents').insert(docRecord);
+        await db.from('project_knowledge').insert({
+          project_id: id,
+          document_id: docId,
+          created_at: new Date().toISOString(),
+        });
+        ingestedCount++;
+      }
+
+      // Log Audit Event
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        action: 'PROJECT_KNOWLEDGE_ADDED',
+        resource_type: 'PROJECT',
+        resource_id: id,
+        decision: 'ALLOW',
+        reason: `Administrator ingested ${ingestedCount} repository code/doc files from GitHub zip into [${project.name}].`,
+        metadata: {
+          project_name: project.name,
+          repository: repoName,
+          files_ingested: ingestedCount,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: `Successfully unpacked and ingested ${ingestedCount} code and documentation files into ${project.name}.`,
+        repositoryName: repoName,
+        files_ingested: ingestedCount,
+        totalFiles: ingestedCount,
+        manifest_id: manifestId,
+        category_breakdown: categoryBreakdown || {},
+      });
+    } catch (err) {
+      console.error('ProjectController.uploadProjectZip error:', err);
       return res.status(500).json({ success: false, error: err.message });
     }
   }

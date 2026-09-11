@@ -142,4 +142,5 @@ export const api = {
   removeProjectKnowledge: (id, documentId) => request(`/projects/${id}/knowledge/${documentId}`, { method: 'DELETE' }),
   queryProjectRAG: (id, query) => request(`/projects/${id}/query`, { method: 'POST', body: JSON.stringify({ query }) }),
   understandProject: (id, action, query) => request(`/projects/${id}/understand`, { method: 'POST', body: JSON.stringify({ action, query }) }),
+  uploadProjectZip: (id, data) => request(`/projects/${id}/upload-zip`, { method: 'POST', body: JSON.stringify(data) }),
 };

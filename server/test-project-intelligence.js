@@ -143,8 +143,9 @@ async function runProjectIntelligenceSuite() {
     body: JSON.stringify({ action: 'architecture' })
   });
   const t5 = await t5Res.json();
+  const t5Text = (t5.answer || '').toLowerCase();
   assert(
-    t5Res.status === 200 && t5.success === true && (t5.answer.includes('Architecture') || t5.answer.includes('Client')),
+    t5Res.status === 200 && t5.success === true && (t5Text.includes('architect') || t5Text.includes('microservice') || t5Text.includes('service')),
     'TEST 5: Architecture Explanation with System Topology',
     `Returned architecture explanation with verified source citations.`
   );

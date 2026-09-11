@@ -1,33 +1,98 @@
+import 'dotenv/config';
+
 /**
  * Dedicated AI Service Abstraction Layer
  * Interfaces with External RAG / LLM APIs (OpenAI, Anthropic, Gemini, or self-hosted vLLM/Ollama)
  * All credentials remain securely on the backend.
  */
 export class AIService {
-  constructor() {
-    this.apiUrl = process.env.RAG_API_URL || 'https://api.openai.com/v1/chat/completions';
-    this.apiKey = process.env.RAG_API_KEY || '';
-    this.model = process.env.RAG_MODEL || 'gpt-4o-mini';
+  get geminiApiKey() {
+    return process.env.GEMINI_API_KEY || (process.env.RAG_PROVIDER === 'gemini' ? process.env.RAG_API_KEY : '') || '';
+  }
+
+  get geminiModel() {
+    return process.env.GEMINI_MODEL || (process.env.RAG_PROVIDER === 'gemini' ? process.env.RAG_MODEL : '') || 'gemini-3.6-flash';
+  }
+
+  get provider() {
+    return process.env.RAG_PROVIDER || (this.geminiApiKey ? 'gemini' : 'openai');
+  }
+
+  get apiUrl() {
+    return process.env.RAG_API_URL || 'https://api.openai.com/v1/chat/completions';
+  }
+
+  get apiKey() {
+    return process.env.RAG_API_KEY || '';
+  }
+
+  get model() {
+    return process.env.RAG_MODEL || (this.provider === 'gemini' ? this.geminiModel : 'gpt-4o-mini');
   }
 
   /**
    * Health check for AI Service configuration
    */
   async healthCheck() {
-    const isConfigured = Boolean(this.apiKey && this.apiKey.trim().length > 0);
+    const isGemini = this.provider === 'gemini' || Boolean(this.geminiApiKey);
+    const isConfigured = Boolean(isGemini ? this.geminiApiKey : this.apiKey);
     return {
       status: isConfigured ? 'CONNECTED' : 'LOCAL_ADAPTER_ACTIVE',
-      provider: this.apiUrl.includes('openai')
-        ? 'OpenAI'
-        : this.apiUrl.includes('anthropic')
-        ? 'Anthropic'
-        : this.apiUrl.includes('localhost') || this.apiUrl.includes('127.0.0.1')
-        ? 'Self-Hosted (vLLM/Ollama)'
-        : 'External RAG Provider',
-      endpoint: this.apiUrl,
-      model: this.model,
+      provider: isGemini ? 'Google Gemini' : this.apiUrl.includes('openai') ? 'OpenAI' : 'External RAG Provider',
+      endpoint: isGemini ? `https://generativelanguage.googleapis.com/v1beta/models/${this.geminiModel}:generateContent` : this.apiUrl,
+      model: isGemini ? this.geminiModel : this.model,
       apiKeyConfigured: isConfigured,
     };
+  }
+
+  /**
+   * Call Google Gemini API (gemini-3.6-flash)
+   */
+  async _callGemini({ systemPrompt, userPrompt, temperature = 0.2, maxTokens = 1200 }) {
+    const model = this.geminiModel || 'gemini-3.6-flash';
+    const key = this.geminiApiKey || this.apiKey;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;
+
+    const body = {
+      contents: [
+        {
+          parts: [{ text: userPrompt }]
+        }
+      ],
+      generationConfig: {
+        temperature,
+        maxOutputTokens: maxTokens,
+      }
+    };
+
+    if (systemPrompt) {
+      body.systemInstruction = {
+        parts: [{ text: systemPrompt }]
+      };
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      const errText = await response.text();
+      throw new Error(`Gemini API HTTP ${response.status}: ${errText}`);
+    }
+
+    const json = await response.json();
+    const text = json.candidates?.[0]?.content?.parts?.[0]?.text;
+    const tokens = json.usageMetadata?.totalTokenCount || null;
+
+    if (!text) {
+      throw new Error('Gemini returned empty candidate response.');
+    }
+
+    return { text, tokens };
   }
 
   /**
@@ -84,8 +149,38 @@ User Question: "${query}"
 
 Provide a clear, professional, and precise enterprise answer based ONLY on the authorized sources above. Include explicit source references.`;
 
-    // Attempt External API call if API key exists
-    if (this.apiKey && this.apiKey.trim().length > 0) {
+    // Google Gemini RAG Generation
+    if (this.provider === 'gemini' || Boolean(this.geminiApiKey)) {
+      try {
+        console.log(`[AIService] Dispatching RAG query to Google Gemini (${this.geminiModel})...`);
+        const { text, tokens } = await this._callGemini({
+          systemPrompt,
+          userPrompt,
+          temperature: 0.2,
+          maxTokens: 1000,
+        });
+
+        if (text) {
+          return {
+            answer: text,
+            sourcesUsed: authorizedDocuments.map((d) => ({
+              id: d.id,
+              title: d.title,
+              source_type: d.source_type,
+              source_url: d.source_url,
+              classification: d.classification,
+            })),
+            modelUsed: `Google Gemini (${this.geminiModel})`,
+            tokens,
+          };
+        }
+      } catch (err) {
+        console.warn(`[AIService] Google Gemini API error: ${err.message}. Falling back to internal synthesis.`);
+      }
+    }
+
+    // Attempt OpenAI API call if configured
+    if (this.provider !== 'gemini' && this.apiKey && this.apiKey.trim().length > 0) {
       try {
         console.log(`[AIService] Dispatching query to external RAG API: ${this.apiUrl}`);
         const response = await fetch(this.apiUrl, {
@@ -306,8 +401,39 @@ ${contextBlock}
 Request:
 ${actionPrompt}`;
 
-    // If API key is available, call external API
-    if (this.apiKey && this.apiKey.trim().length > 0) {
+    // Google Gemini Project Intelligence RAG Generation
+    if (this.provider === 'gemini' || Boolean(this.geminiApiKey)) {
+      try {
+        console.log(`[AIService] Dispatching Project Intelligence query to Google Gemini (${this.geminiModel})...`);
+        const { text, tokens } = await this._callGemini({
+          systemPrompt,
+          userPrompt,
+          temperature: 0.2,
+          maxTokens: 1500,
+        });
+
+        if (text) {
+          return {
+            answer: text,
+            sourcesUsed: authorizedDocuments.map((d) => ({
+              id: d.id,
+              title: d.title,
+              source_type: d.source_type,
+              source_url: d.source_url,
+              classification: d.classification,
+              department: d.department,
+            })),
+            modelUsed: `Google Gemini (${this.geminiModel})`,
+            tokens,
+          };
+        }
+      } catch (err) {
+        console.warn(`[AIService] Gemini Project Intelligence error: ${err.message}. Falling back to high-fidelity local synthesis.`);
+      }
+    }
+
+    // Attempt OpenAI API call if configured
+    if (this.provider !== 'gemini' && this.apiKey && this.apiKey.trim().length > 0) {
       try {
         const response = await fetch(this.apiUrl, {
           method: 'POST',
@@ -513,7 +639,38 @@ Welcome to **${project.name}**! Here is your step-by-step onboarding roadmap to 
 - Submit a test PR following the repository's branch and commit naming conventions.`;
     } else {
       // Natural language chat Q&A
-      if (qLower.includes('redis')) {
+      const schemaDoc = authorizedDocuments.find((d) =>
+        d.title.toLowerCase().includes('schema') ||
+        d.title.toLowerCase().includes('prisma') ||
+        d.metadata?.category === 'Database & Schema'
+      );
+      const routesDoc = authorizedDocuments.find((d) =>
+        d.title.toLowerCase().includes('routes') ||
+        d.title.toLowerCase().includes('route') ||
+        d.metadata?.category === 'API Routes & Endpoints'
+      );
+
+      if ((qLower.includes('model') || qLower.includes('schema') || qLower.includes('table')) && schemaDoc) {
+        const lines = schemaDoc.content.split('\n');
+        const modelNames = lines.filter((l) => l.trim().startsWith('model ')).map((l) => l.trim().split(/\s+/)[1]);
+        if (modelNames.length > 0) {
+          answerText = `Based on authorized schema document **${schemaDoc.title}**, the following database models are defined:\n\n` +
+            modelNames.map((m) => `• **\`${m}\`**`).join('\n') + `\n\n\`\`\`prisma\n` +
+            schemaDoc.content.slice(0, 1000) + `\n\`\`\``;
+        } else {
+          answerText = `Based on authorized schema document **${schemaDoc.title}**:\n\n` + schemaDoc.content.slice(0, 800);
+        }
+      } else if ((qLower.includes('route') || qLower.includes('endpoint') || qLower.includes('checkout') || qLower.includes('track')) && routesDoc) {
+        const lines = routesDoc.content.split('\n');
+        const routeLines = lines.filter((l) => l.includes('router.') || l.includes('GET') || l.includes('POST'));
+        if (routeLines.length > 0) {
+          answerText = `Based on authorized route document **${routesDoc.title}**, the following API routes are available:\n\n` +
+            routeLines.map((r) => `• \`${r.trim()}\``).join('\n') + `\n\n\`\`\`javascript\n` +
+            routesDoc.content.slice(0, 800) + `\n\`\`\``;
+        } else {
+          answerText = `Based on authorized route document **${routesDoc.title}**:\n\n` + routesDoc.content.slice(0, 800);
+        }
+      } else if (qLower.includes('redis')) {
         answerText = `In **${project.name}**, Redis is utilized as a high-performance in-memory cache and session revocation registry.
 It provides sub-millisecond lookup times for:
 1. Token revocation lists and active session validations.

@@ -58,10 +58,11 @@ export function resetDatabase() {
   return localStore;
 }
 
-// Supabase client instance (if configured)
+// Supabase client instance (if configured for primary platform store)
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
 export const isSupabaseConfigured = Boolean(
+  process.env.USE_REMOTE_SUPABASE === 'true' &&
   supabaseUrl && supabaseKey && !supabaseUrl.includes('your-supabase-url')
 );
 

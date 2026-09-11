@@ -219,6 +219,8 @@ export class RAGService {
       answer: guarded.sanitizedAnswer,
       sources: guarded.sources,
       decision: 'ALLOW',
+      modelUsed: aiResponse.modelUsed,
+      tokens: aiResponse.tokens,
       auditId: auditRecord?.id,
       securityIndicators: {
         tenantIsolation: 'Active (Enforced)',
@@ -455,6 +457,8 @@ export class RAGService {
       answer: guarded.sanitizedAnswer,
       sources: guarded.sources,
       decision: 'ALLOW',
+      modelUsed: aiResponse.modelUsed,
+      tokens: aiResponse.tokens,
       securityIndicators: {
         tenantIsolation: 'Active (Enforced)',
         projectAccess: 'VERIFIED (Member/Group)',

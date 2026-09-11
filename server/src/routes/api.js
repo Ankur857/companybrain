@@ -124,5 +124,6 @@ router.delete('/projects/:id/knowledge/:docId', authenticate, requireAdmin, Proj
 // Project Intelligence Queries & AI Explanations
 router.post('/projects/:id/query', authenticate, ProjectController.queryProject);
 router.post('/projects/:id/understand', authenticate, ProjectController.understandProject);
+router.post('/projects/:id/upload-zip', authenticate, requireAdmin, ProjectController.uploadProjectZip);
 
 export default router;
