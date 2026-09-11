@@ -12,8 +12,16 @@ export class DocumentController {
 
       const groupMap = Object.fromEntries((groups || []).map((g) => [g.id, g.name]));
 
+      // Show ONLY documents that were genuinely added / synced / uploaded
+      const includeDemo = req.query.includeDemo === 'true';
+      const actualDocs = (documents || []).filter((doc) => {
+        if (includeDemo) return true;
+        const isSeedDoc = doc.id.startsWith('f1111111-') || doc.id.startsWith('f2222222-') || doc.id.startsWith('f3333333-') || doc.is_demo === true;
+        return !isSeedDoc;
+      });
+
       // Pre-evaluate user access status for each document for clean UI indicators
-      const enhancedDocs = (documents || []).map((doc) => {
+      const enhancedDocs = actualDocs.map((doc) => {
         const decision = PolicyEngine.canAccess(req.user, doc);
         const reqGroupNames = (doc.required_groups || []).map((id) => groupMap[id] || id);
 
@@ -28,6 +36,8 @@ export class DocumentController {
           owner: doc.owner,
           version: doc.version,
           required_groups: reqGroupNames,
+          required_group_ids: doc.required_groups || [],
+          metadata: doc.metadata || {},
           canAccess: decision.allowed,
           accessReason: decision.reason,
           created_at: doc.created_at,

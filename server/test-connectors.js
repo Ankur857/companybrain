@@ -74,7 +74,7 @@ async function runTests() {
   );
 
   // =========================================================================
-  // TEST 2: Supported connector types list only Google Drive, SharePoint, Supabase
+  // TEST 2: Supported connector types list only Google Drive and Supabase (SharePoint removed)
   // =========================================================================
   const typesRes = await fetch(`${BASE_URL}/connectors/types`, {
     headers: { Authorization: `Bearer ${adminAToken}` },
@@ -84,10 +84,10 @@ async function runTests() {
   assert(
     typesRes.status === 200 &&
     typeKeys.includes('google_drive') &&
-    typeKeys.includes('sharepoint') &&
     typeKeys.includes('supabase') &&
-    typeKeys.length === 3,
-    'TEST 2: Supported connector types list only Google Drive, SharePoint, and Supabase',
+    !typeKeys.includes('sharepoint') &&
+    typeKeys.length === 2,
+    'TEST 2: Supported connector types list only Google Drive and Supabase (SharePoint removed)',
     `Available types: [${typeKeys.join(', ')}]`
   );
 

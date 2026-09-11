@@ -32,7 +32,9 @@ import {
   ArrowLeft,
   Settings,
   HelpCircle,
-  FolderPlus
+  FolderPlus,
+  UploadCloud,
+  FileUp
 } from 'lucide-react';
 
 export function Connectors() {
@@ -78,6 +80,25 @@ export function Connectors() {
   const [selectedUserIds, setSelectedUserIds] = useState(new Set());
   const [selectedGroupIds, setSelectedGroupIds] = useState(new Set());
   const [savingAccess, setSavingAccess] = useState(false);
+
+  // Supabase Manual Upload (Admin Only) State
+  const [showSupabaseUploadModal, setShowSupabaseUploadModal] = useState(false);
+  const [uploadForm, setUploadForm] = useState({
+    title: '',
+    content: '',
+    fileName: '',
+    fileType: '',
+    department: 'Engineering',
+    project: 'Core',
+    classification: 'INTERNAL',
+  });
+  const [uploadFileObj, setUploadFileObj] = useState(null);
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadGroups, setUploadGroups] = useState([]);
+  const [uploadUsers, setUploadUsers] = useState([]);
+  const [uploadSelectedGroupIds, setUploadSelectedGroupIds] = useState(new Set());
+  const [uploadSelectedUserIds, setUploadSelectedUserIds] = useState(new Set());
+  const [loadingUploadModalData, setLoadingUploadModalData] = useState(false);
 
   // Check URL parameters for OAuth returns
   useEffect(() => {
@@ -319,6 +340,106 @@ export function Connectors() {
     }
   };
 
+  // Open Supabase Manual Upload Modal
+  const handleOpenSupabaseUpload = async () => {
+    setShowSupabaseUploadModal(true);
+    setLoadingUploadModalData(true);
+    try {
+      const [groupsRes, usersRes] = await Promise.all([
+        api.getGroups(),
+        api.getUsers(),
+      ]);
+      if (groupsRes.success) setUploadGroups(groupsRes.groups || []);
+      if (usersRes.success) setUploadUsers(usersRes.users || []);
+    } catch (err) {
+      console.error(err);
+      showToast('Failed to load access groups/users: ' + err.message, 'error');
+    } finally {
+      setLoadingUploadModalData(false);
+    }
+  };
+
+  // Handle file picker selection
+  const handleFileUploadChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFileObj(file);
+    const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+    setUploadForm((prev) => ({
+      ...prev,
+      fileName: file.name,
+      fileType: file.type || 'text/plain',
+      title: prev.title ? prev.title : nameWithoutExt,
+    }));
+
+    const reader = new FileReader();
+    const isText =
+      file.type.startsWith('text/') ||
+      file.name.endsWith('.txt') ||
+      file.name.endsWith('.md') ||
+      file.name.endsWith('.json') ||
+      file.name.endsWith('.csv');
+
+    if (isText) {
+      reader.onload = (evt) => {
+        setUploadForm((prev) => ({ ...prev, content: evt.target.result }));
+      };
+      reader.readAsText(file);
+    } else {
+      reader.onload = (evt) => {
+        setUploadForm((prev) => ({
+          ...prev,
+          content: `[Uploaded Enterprise Document: ${file.name}] (${(file.size / 1024).toFixed(1)} KB, type: ${file.type || 'application/octet-stream'}). Ingested directly into Supabase Knowledge Storage for CompanyBrain semantic search and policy-governed RAG access.`,
+        }));
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  // Submit Supabase Manual Upload
+  const handleSubmitSupabaseUpload = async () => {
+    if (!uploadForm.title.trim() || !uploadForm.content.trim()) {
+      showToast('Document title and file content are required.', 'error');
+      return;
+    }
+    setUploadingDoc(true);
+    try {
+      const res = await api.uploadSupabaseDocument({
+        title: uploadForm.title.trim(),
+        content: uploadForm.content.trim(),
+        fileName: uploadForm.fileName || `${uploadForm.title.trim()}.txt`,
+        fileType: uploadForm.fileType || 'text/plain',
+        department: uploadForm.department,
+        project: uploadForm.project,
+        classification: uploadForm.classification,
+        required_groups: Array.from(uploadSelectedGroupIds),
+        allowed_user_ids: Array.from(uploadSelectedUserIds),
+      });
+
+      if (res.success) {
+        showToast(res.message || 'Document uploaded to Supabase successfully!', 'success');
+        setShowSupabaseUploadModal(false);
+        setUploadForm({
+          title: '',
+          content: '',
+          fileName: '',
+          fileType: '',
+          department: 'Engineering',
+          project: 'Core',
+          classification: 'INTERNAL',
+        });
+        setUploadFileObj(null);
+        setUploadSelectedGroupIds(new Set());
+        setUploadSelectedUserIds(new Set());
+        loadData();
+      }
+    } catch (err) {
+      showToast(`Upload failed: ${err.message}`, 'error');
+    } finally {
+      setUploadingDoc(false);
+    }
+  };
+
   // Sync Action
   const handleSync = async (connector) => {
     setSyncingId(connector.id);
@@ -367,7 +488,6 @@ export function Connectors() {
   const getConnectorIcon = (type) => {
     switch (type) {
       case 'google_drive': return Folder;
-      case 'sharepoint': return FileText;
       case 'supabase': default: return Database;
     }
   };
@@ -385,39 +505,55 @@ export function Connectors() {
           </div>
           <h1 className="text-xl font-bold text-white tracking-tight flex items-center gap-2">
             <Layers className="w-5 h-5 text-indigo-400" />
-            Knowledge Sources
+            Knowledge Sources & Storage
           </h1>
           <p className="text-xs text-slate-400 mt-1 max-w-2xl leading-relaxed">
-            Connect your company's existing enterprise tools to CompanyBrain. Authenticate real user accounts, browse live files, select knowledge, and govern permissions.
+            Connect your company's existing enterprise tools to CompanyBrain. Authenticate real Google Drive accounts, manually upload files to Supabase knowledge storage (Admin only), browse live files, and govern permissions.
           </p>
+        </div>
+
+        {/* Quick Admin Upload CTA in Header */}
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleOpenSupabaseUpload}
+            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition-all"
+          >
+            <UploadCloud className="w-4 h-4" />
+            <span>Upload Knowledge File (Admin)</span>
+          </button>
         </div>
       </div>
 
-      {/* 3 Real Connector Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+      {/* 2 Supported Connector Cards: Google Drive & Supabase */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {supportedTypes.map((typeDef) => {
           const Icon = getConnectorIcon(typeDef.type);
           const connectedInstance = connectors.find((c) => c.type === typeDef.type && c.status !== 'DISCONNECTED');
           const isConnected = Boolean(connectedInstance);
           const isSyncing = syncingId === connectedInstance?.id;
+          const isSupabase = typeDef.type === 'supabase';
 
           return (
             <div
               key={typeDef.type}
-              className={`card-clean p-5 flex flex-col justify-between space-y-4 relative transition-all ${
-                isConnected
+              className={`card-clean p-6 flex flex-col justify-between space-y-4 relative transition-all ${
+                isConnected || isSupabase
                   ? 'border-indigo-500/30 bg-gradient-to-b from-slate-900/90 to-slate-950/90'
                   : 'hover:border-white/20'
               }`}
             >
-              <div className="space-y-3.5">
+              <div className="space-y-4">
                 {/* Top Row: Icon & Status */}
                 <div className="flex items-start justify-between">
-                  <div className="w-11 h-11 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-center text-indigo-400">
-                    <Icon className="w-5 h-5" />
+                  <div className="w-12 h-12 rounded-xl bg-slate-900 border border-white/10 flex items-center justify-center text-indigo-400 shadow-sm">
+                    <Icon className="w-6 h-6" />
                   </div>
 
-                  {isConnected ? (
+                  {isSupabase ? (
+                    <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-indigo-500/10 text-indigo-300 border border-indigo-500/20 text-[11px] font-mono font-medium">
+                      <ShieldCheck className="w-3 h-3 text-indigo-400" /> Admin Upload Storage
+                    </span>
+                  ) : isConnected ? (
                     connectedInstance.is_development_mode ? (
                       <span className="flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-500/10 text-amber-300 border border-amber-500/20 text-[11px] font-mono font-medium">
                         <Sparkles className="w-3 h-3 text-amber-400" />
@@ -441,13 +577,20 @@ export function Connectors() {
 
                 {/* Name & Account Details */}
                 <div>
-                  <h3 className="text-sm font-semibold text-white">{typeDef.name}</h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-semibold text-white">{typeDef.name}</h3>
+                    {isSupabase && (
+                      <span className="text-[10px] font-mono bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-1.5 py-0.5 rounded">
+                        Active
+                      </span>
+                    )}
+                  </div>
                   {isConnected && connectedInstance.account?.email ? (
                     <div className="text-[11px] font-mono text-indigo-300 mt-1 truncate">
                       Account: {connectedInstance.account.email}
                     </div>
                   ) : (
-                    <p className="text-[11px] text-slate-400 mt-1 leading-relaxed">
+                    <p className="text-xs text-slate-400 mt-1.5 leading-relaxed">
                       {typeDef.description}
                     </p>
                   )}
@@ -475,6 +618,21 @@ export function Connectors() {
                       </span>
                     </div>
                   </div>
+                ) : isSupabase ? (
+                  <div className="p-3 rounded-xl bg-slate-950/70 border border-white/[0.06] space-y-1.5 text-xs font-mono">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 text-[11px]">Ingestion Engine:</span>
+                      <span className="font-semibold text-emerald-400">Supabase Document Store</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 text-[11px]">Access Mode:</span>
+                      <span className="text-indigo-400 text-[11px]">Admin Manual Upload Only</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-400 text-[11px]">Governance:</span>
+                      <span className="text-[11px] text-slate-300">Policy Clearance & Groups</span>
+                    </div>
+                  </div>
                 ) : !typeDef.isConfigured ? (
                   <div className="p-2.5 rounded-xl bg-slate-950 border border-amber-500/20 text-[11px] text-amber-300/80 font-mono">
                     {typeDef.unconfiguredMessage}
@@ -483,8 +641,49 @@ export function Connectors() {
               </div>
 
               {/* Action Buttons */}
-              <div className="pt-3 border-t border-white/[0.06]">
-                {isConnected ? (
+              <div className="pt-4 border-t border-white/[0.06]">
+                {isSupabase ? (
+                  <div className="space-y-2">
+                    <button
+                      onClick={handleOpenSupabaseUpload}
+                      className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all"
+                    >
+                      <UploadCloud className="w-4 h-4" />
+                      <span>Upload Knowledge File (Admin)</span>
+                    </button>
+                    {isConnected ? (
+                      <div className="flex items-center justify-between pt-1">
+                        <button
+                          onClick={() => {
+                            setSearchQuery('');
+                            openFileBrowser(connectedInstance, 'root', 'Root', false, '');
+                          }}
+                          className="text-xs text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
+                        >
+                          <Search className="w-3.5 h-3.5" />
+                          <span>Browse Database Tables</span>
+                        </button>
+                        <button
+                          onClick={() => setDisconnectingConnector(connectedInstance)}
+                          className="text-rose-400/80 hover:text-rose-400 text-[11px] transition-colors flex items-center gap-1"
+                        >
+                          <Power className="w-3 h-3" />
+                          <span>Disconnect DB</span>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex items-center justify-center pt-1">
+                        <button
+                          onClick={() => setActiveSetupType(typeDef)}
+                          className="text-[11px] text-slate-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
+                        >
+                          <Database className="w-3 h-3" />
+                          <span>Connect Database URL & API Key</span>
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ) : isConnected ? (
                   <div className="space-y-2">
                     <div className="grid grid-cols-2 gap-2">
                       <button
@@ -492,7 +691,7 @@ export function Connectors() {
                           setSearchQuery('');
                           openFileBrowser(connectedInstance, 'root', 'Root', false, '');
                         }}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                        className="px-3 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-medium flex items-center justify-center gap-1.5 transition-all shadow-sm"
                       >
                         <Search className="w-3.5 h-3.5" />
                         <span>Browse</span>
@@ -501,7 +700,7 @@ export function Connectors() {
                       <button
                         onClick={() => handleSync(connectedInstance)}
                         disabled={isSyncing}
-                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-white/10 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
+                        className="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-50 text-slate-200 border border-white/10 text-xs font-medium flex items-center justify-center gap-1.5 transition-all"
                       >
                         <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin text-indigo-400' : ''}`} />
                         <span>{isSyncing ? 'Syncing...' : 'Sync'}</span>
@@ -522,17 +721,15 @@ export function Connectors() {
                   <div className="space-y-2">
                     <button
                       onClick={() => {
-                        if (typeDef.type === 'supabase') {
-                          setActiveSetupType(typeDef);
-                        } else if (typeDef.isConfigured) {
+                        if (typeDef.isConfigured) {
                           handleInitiateOAuth(typeDef);
                         } else {
                           setActiveSetupType(typeDef);
                         }
                       }}
-                      className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all"
+                      className="w-full py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center justify-center gap-2 shadow-sm transition-all"
                     >
-                      <span>Connect</span>
+                      <span>Connect Google Drive</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </button>
                   </div>
@@ -1083,6 +1280,255 @@ export function Connectors() {
                 </div>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Supabase Manual Upload Modal (Admin Only) */}
+      {showSupabaseUploadModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
+          <div className="card-clean w-full max-w-lg p-6 border border-white/[0.12] shadow-2xl space-y-5 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between border-b border-white/[0.08] pb-3">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-300 border border-indigo-500/20">
+                    Admin Knowledge Upload
+                  </span>
+                  <span className="text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                    Supabase Storage
+                  </span>
+                </div>
+                <h3 className="text-base font-bold text-white mt-1">
+                  Upload Knowledge Document
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Ingest real enterprise documents into Supabase with automatic indexing and policy-governed access.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowSupabaseUploadModal(false)}
+                className="p-1 rounded text-slate-400 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {loadingUploadModalData ? (
+              <div className="py-12 text-center text-slate-400">
+                <div className="inline-block w-6 h-6 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                <p className="text-xs font-mono text-slate-500">Loading access clearance metadata...</p>
+              </div>
+            ) : (
+              <div className="space-y-4 text-xs">
+                {/* File Dropzone / Picker */}
+                <div className="space-y-1.5">
+                  <label className="text-slate-300 font-medium flex items-center justify-between">
+                    <span>Select File to Upload</span>
+                    <span className="text-[11px] font-mono text-slate-400">PDF, TXT, MD, JSON, CSV, DOCX</span>
+                  </label>
+                  <label className="border-2 border-dashed border-white/10 hover:border-indigo-500/50 rounded-xl p-4 flex flex-col items-center justify-center cursor-pointer transition-all bg-slate-950/50 hover:bg-slate-900/50">
+                    <input
+                      type="file"
+                      onChange={handleFileUploadChange}
+                      accept=".pdf,.docx,.doc,.txt,.md,.json,.csv"
+                      className="hidden"
+                    />
+                    <UploadCloud className="w-8 h-8 text-indigo-400 mb-2" />
+                    {uploadFileObj ? (
+                      <div className="text-center">
+                        <span className="text-white font-medium block truncate max-w-xs">{uploadFileObj.name}</span>
+                        <span className="text-[11px] font-mono text-emerald-400">{(uploadFileObj.size / 1024).toFixed(1)} KB • Ready</span>
+                      </div>
+                    ) : (
+                      <div className="text-center">
+                        <span className="text-slate-300 font-medium block">Click or drag file here</span>
+                        <span className="text-[11px] text-slate-500">File content will be read and ingested into Supabase</span>
+                      </div>
+                    )}
+                  </label>
+                </div>
+
+                {/* Title */}
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-medium">Document Title *</label>
+                  <input
+                    type="text"
+                    value={uploadForm.title}
+                    onChange={(e) => setUploadForm({ ...uploadForm, title: e.target.value })}
+                    placeholder="e.g. Q3 Financial Audit Report.pdf"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono"
+                  />
+                </div>
+
+                {/* Row: Department & Sensitivity Classification */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="text-slate-300 font-medium">Department</label>
+                    <select
+                      value={uploadForm.department}
+                      onChange={(e) => setUploadForm({ ...uploadForm, department: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs"
+                    >
+                      <option value="Engineering">Engineering</option>
+                      <option value="Finance">Finance</option>
+                      <option value="HR">HR</option>
+                      <option value="Operations">Operations</option>
+                      <option value="Product">Product</option>
+                      <option value="Security">Security</option>
+                      <option value="Executive">Executive</option>
+                      <option value="General">General</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-slate-300 font-medium">Sensitivity Classification</label>
+                    <select
+                      value={uploadForm.classification}
+                      onChange={(e) => setUploadForm({ ...uploadForm, classification: e.target.value })}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono"
+                    >
+                      <option value="PUBLIC">PUBLIC</option>
+                      <option value="INTERNAL">INTERNAL</option>
+                      <option value="CONFIDENTIAL">CONFIDENTIAL</option>
+                      <option value="RESTRICTED">RESTRICTED</option>
+                      <option value="HIGHLY_CONFIDENTIAL">HIGHLY_CONFIDENTIAL</option>
+                    </select>
+                  </div>
+                </div>
+
+                {/* Project */}
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-medium">Project (Optional)</label>
+                  <input
+                    type="text"
+                    value={uploadForm.project}
+                    onChange={(e) => setUploadForm({ ...uploadForm, project: e.target.value })}
+                    placeholder="e.g. Project Alpha, Core Knowledge"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs"
+                  />
+                </div>
+
+                {/* Content preview/edit */}
+                <div className="space-y-1">
+                  <label className="text-slate-300 font-medium flex items-center justify-between">
+                    <span>Document Content / Extracted Text *</span>
+                    <span className="text-[10px] font-mono text-slate-500">{uploadForm.content.length} characters</span>
+                  </label>
+                  <textarea
+                    rows={4}
+                    value={uploadForm.content}
+                    onChange={(e) => setUploadForm({ ...uploadForm, content: e.target.value })}
+                    placeholder="Paste text or select a file above..."
+                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-white/[0.08] focus:border-indigo-500 text-white outline-none text-xs font-mono leading-relaxed resize-y"
+                  />
+                </div>
+
+                {/* Access Governance Controls: Groups */}
+                <div className="space-y-2 pt-2 border-t border-white/[0.08]">
+                  <div className="text-xs font-semibold text-white flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Required Access Groups</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {uploadSelectedGroupIds.size} selected
+                    </span>
+                  </div>
+                  <div className="space-y-1 max-h-32 overflow-y-auto bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06]">
+                    {uploadGroups.length === 0 ? (
+                      <p className="text-[11px] text-slate-500">No groups configured.</p>
+                    ) : (
+                      uploadGroups.map((grp) => (
+                        <label
+                          key={grp.id}
+                          className="flex items-center gap-2 p-1 rounded-lg hover:bg-white/[0.03] cursor-pointer text-xs"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={uploadSelectedGroupIds.has(grp.id)}
+                            onChange={(e) => {
+                              const next = new Set(uploadSelectedGroupIds);
+                              if (e.target.checked) next.add(grp.id);
+                              else next.delete(grp.id);
+                              setUploadSelectedGroupIds(next);
+                            }}
+                            className="rounded border-slate-700 text-indigo-600 focus:ring-0"
+                          />
+                          <span className="text-slate-200">{grp.name}</span>
+                          <span className="text-[10px] font-mono text-slate-500 ml-auto">{grp.description}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* Access Governance Controls: Specific Users */}
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-white flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Users className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>Direct User Clearances</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-slate-400">
+                      {uploadSelectedUserIds.size} selected
+                    </span>
+                  </div>
+                  <div className="space-y-1 max-h-28 overflow-y-auto bg-slate-950/70 p-2.5 rounded-xl border border-white/[0.06]">
+                    {uploadUsers.length === 0 ? (
+                      <p className="text-[11px] text-slate-500">No users loaded.</p>
+                    ) : (
+                      uploadUsers.map((usr) => (
+                        <label
+                          key={usr.id}
+                          className="flex items-center gap-2 p-1 rounded-lg hover:bg-white/[0.03] cursor-pointer text-xs"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={uploadSelectedUserIds.has(usr.id)}
+                            onChange={(e) => {
+                              const next = new Set(uploadSelectedUserIds);
+                              if (e.target.checked) next.add(usr.id);
+                              else next.delete(usr.id);
+                              setUploadSelectedUserIds(next);
+                            }}
+                            className="rounded border-slate-700 text-indigo-600 focus:ring-0"
+                          />
+                          <span className="text-slate-200">{usr.name}</span>
+                          <span className="text-[10px] font-mono text-slate-500 ml-auto">{usr.email}</span>
+                        </label>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-3 pt-3 border-t border-white/[0.08]">
+              <button
+                onClick={() => setShowSupabaseUploadModal(false)}
+                className="px-4 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-medium transition-all"
+              >
+                Cancel
+              </button>
+
+              <button
+                onClick={handleSubmitSupabaseUpload}
+                disabled={uploadingDoc || !uploadForm.title.trim() || !uploadForm.content.trim()}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-2 shadow-sm transition-all"
+              >
+                {uploadingDoc ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <span>Uploading...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud className="w-3.5 h-3.5" />
+                    <span>Upload to Supabase</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

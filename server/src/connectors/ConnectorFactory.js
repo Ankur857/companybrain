@@ -1,11 +1,10 @@
 import { GoogleDriveConnector } from './GoogleDriveConnector.js';
-import { SharePointConnector } from './SharePointConnector.js';
 import { SupabaseConnector } from './SupabaseConnector.js';
 
 export class ConnectorFactory {
   /**
    * Instantiate appropriate connector instance
-   * @param {string} type - 'google_drive' | 'sharepoint' | 'supabase'
+   * @param {string} type - 'google_drive' | 'supabase'
    * @param {Object} config - connector configuration
    * @param {Object|null} account - connected account credentials (server-side only)
    * @param {boolean} isDevelopmentMode - explicit development mode
@@ -14,21 +13,18 @@ export class ConnectorFactory {
     switch (type) {
       case 'google_drive':
         return new GoogleDriveConnector(config, account, isDevelopmentMode);
-      case 'sharepoint':
-        return new SharePointConnector(config, account, isDevelopmentMode);
       case 'supabase':
         return new SupabaseConnector(config, account, isDevelopmentMode);
       default:
-        throw new Error(`Unsupported connector type: [${type}]. Currently supported: google_drive, sharepoint, supabase.`);
+        throw new Error(`Unsupported connector type: [${type}]. Currently supported: google_drive, supabase.`);
     }
   }
 
   /**
-   * Get metadata for the 3 supported connectors with live configuration status
+   * Get metadata for the supported connectors with live configuration status
    */
   static getSupportedTypes() {
     const hasGoogle = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
-    const hasMicrosoft = Boolean(process.env.MICROSOFT_CLIENT_ID && process.env.MICROSOFT_CLIENT_SECRET);
     const hasSupabase = Boolean(process.env.SUPABASE_URL && (process.env.SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY));
 
     return [
@@ -45,28 +41,17 @@ export class ConnectorFactory {
         supportsOAuth: true,
       },
       {
-        type: 'sharepoint',
-        name: 'Microsoft SharePoint',
-        tagline: 'Connect Microsoft SharePoint',
-        category: 'Enterprise Intranet',
-        icon: 'FileText',
-        description: 'Sign in with your Microsoft 365 work account to access real SharePoint sites, document libraries, and intranet files.',
-        authType: 'Microsoft Graph / Azure AD OAuth',
-        isConfigured: hasMicrosoft,
-        unconfiguredMessage: 'SharePoint integration is not configured. Azure App registration Client ID and Secret required.',
-        supportsOAuth: true,
-      },
-      {
         type: 'supabase',
         name: 'Supabase',
-        tagline: 'Connect Supabase/PostgreSQL data',
-        category: 'Relational Database',
+        tagline: 'Admin Manual Upload & Storage',
+        category: 'Knowledge Storage',
         icon: 'Database',
-        description: 'Connect your Supabase project to discover real schemas and tables for permission-aware knowledge queries.',
-        authType: 'Project URL & API Key',
+        description: 'Securely upload company documents and files into Supabase knowledge storage with fine-grained access control (Admin only).',
+        authType: 'Supabase Storage & API',
         isConfigured: hasSupabase,
         unconfiguredMessage: 'Supabase connection required. Enter your Supabase Project URL and API Key.',
         supportsOAuth: false,
+        supportsManualUpload: true,
       },
     ];
   }

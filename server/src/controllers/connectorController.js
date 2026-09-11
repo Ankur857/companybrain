@@ -344,6 +344,87 @@ export class ConnectorController {
   }
 
   /**
+   * POST /api/connectors/supabase/upload
+   * Admin-only manual document/file upload to Supabase knowledge storage
+   */
+  static async uploadSupabaseDocument(req, res) {
+    try {
+      const tenantId = req.user.tenant_id;
+      const {
+        title,
+        content,
+        fileName,
+        department,
+        project,
+        classification,
+        required_groups,
+        allowed_user_ids,
+        fileType,
+      } = req.body;
+
+      if (!title || !content) {
+        return res.status(400).json({ success: false, error: 'Document title and content are required.' });
+      }
+
+      const docId = crypto.randomUUID();
+      const newDoc = {
+        id: docId,
+        tenant_id: tenantId,
+        title: title.trim(),
+        content: content.trim(),
+        department: department || 'General',
+        project: project || 'Enterprise Knowledge',
+        classification: classification || 'INTERNAL',
+        source_type: 'supabase',
+        source_url: `supabase://storage/documents/${fileName || title}`,
+        owner: req.user.email,
+        version: '1.0',
+        required_groups: Array.isArray(required_groups) ? required_groups : [],
+        is_demo: false,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        metadata: {
+          fileName: fileName || `${title}.txt`,
+          fileType: fileType || 'text/plain',
+          uploadedBy: req.user.name,
+          uploadedByEmail: req.user.email,
+          uploadedAt: new Date().toISOString(),
+          allowed_user_ids: Array.isArray(allowed_user_ids) ? allowed_user_ids : [],
+          storageProvider: 'Supabase Knowledge Storage',
+        },
+      };
+
+      await db.from('documents').insert(newDoc);
+
+      // Audit event
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        action: 'KNOWLEDGE_SELECTED',
+        resource_type: 'DOCUMENT',
+        resource_id: newDoc.title,
+        decision: 'SUCCESS',
+        reason: `Administrator manually uploaded document [${newDoc.title}] to Supabase Knowledge Storage.`,
+        metadata: {
+          classification: newDoc.classification,
+          required_groups: newDoc.required_groups,
+          allowed_user_ids: newDoc.metadata.allowed_user_ids,
+        },
+      });
+
+      return res.status(201).json({
+        success: true,
+        message: `Uploaded "${newDoc.title}" to Supabase Knowledge Storage successfully.`,
+        document: newDoc,
+      });
+    } catch (err) {
+      console.error('Supabase upload error:', err);
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  /**
    * POST /api/connectors/development/connect
    * Explicit test connection mode clearly labeled DEVELOPMENT MODE
    */
@@ -352,7 +433,7 @@ export class ConnectorController {
       const tenantId = req.user.tenant_id;
       const { type, name } = req.body;
 
-      if (!['google_drive', 'sharepoint', 'supabase'].includes(type)) {
+      if (!['google_drive', 'supabase'].includes(type)) {
         return res.status(400).json({ success: false, error: 'Invalid connector type.' });
       }
 

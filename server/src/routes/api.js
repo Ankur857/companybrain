@@ -70,6 +70,7 @@ router.delete('/connectors/:id', authenticate, requireAdmin, ConnectorController
 router.get('/connectors/oauth/:provider/authorize', authenticate, requireAdmin, ConnectorController.getOAuthUrl);
 router.get('/connectors/oauth/:provider/callback', ConnectorController.handleOAuthCallback);
 router.post('/connectors/supabase/connect', authenticate, requireAdmin, ConnectorController.connectSupabase);
+router.post('/connectors/supabase/upload', authenticate, requireAdmin, ConnectorController.uploadSupabaseDocument);
 router.post('/connectors/development/connect', authenticate, requireAdmin, ConnectorController.connectDevelopment);
 
 // Live Source Browsing & Selection

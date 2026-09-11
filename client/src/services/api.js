@@ -83,6 +83,7 @@ export const api = {
     return request(`/connectors/oauth/${provider}/authorize${q ? `?${q}` : ''}`);
   },
   connectSupabase: (data) => request('/connectors/supabase/connect', { method: 'POST', body: JSON.stringify(data) }),
+  uploadSupabaseDocument: (data) => request('/connectors/supabase/upload', { method: 'POST', body: JSON.stringify(data) }),
   connectDevelopment: (data) => request('/connectors/development/connect', { method: 'POST', body: JSON.stringify(data) }),
 
   // Live Browsing & Knowledge Selection
