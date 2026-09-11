@@ -16,14 +16,18 @@ import {
   Zap,
   Lock,
   Clock,
-  ExternalLink
+  ExternalLink,
+  FolderKanban,
+  Sparkles
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 export function Dashboard() {
   const { user, tenant } = useAuth();
+  const navigate = useNavigate();
   const [stats, setStats] = useState(null);
   const [recentAudits, setRecentAudits] = useState([]);
+  const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,10 +35,12 @@ export function Dashboard() {
     Promise.all([
       api.getDashboardStats(),
       api.getAuditLogs({ limit: 6 }),
+      api.getProjects().catch(() => ({ success: false, projects: [] })),
     ])
-      .then(([statsRes, auditsRes]) => {
+      .then(([statsRes, auditsRes, projRes]) => {
         if (statsRes.success) setStats(statsRes.stats);
         if (auditsRes.success) setRecentAudits(auditsRes.logs || []);
+        if (projRes.success) setProjects(projRes.projects || []);
       })
       .catch(console.error)
       .finally(() => setLoading(false));
@@ -121,6 +127,74 @@ export function Dashboard() {
             <span className="text-rose-400/80">{stats?.deniedQueries ?? 0} blocked</span>
           </div>
         </div>
+      </div>
+
+      {/* Projects & Fast Onboarding Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <div className="flex items-center gap-2">
+              <FolderKanban className="w-4 h-4 text-indigo-400" />
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">
+                Assigned Projects & Fast Onboarding
+              </h2>
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 font-semibold border border-indigo-500/20">
+                PROJECT INTELLIGENCE
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-0.5">
+              Explore system architecture, services, databases, and APIs for projects you are cleared to access.
+            </p>
+          </div>
+          <Link
+            to="/projects"
+            className="text-xs text-indigo-400 hover:text-indigo-300 flex items-center gap-1 font-medium transition-colors"
+          >
+            <span>View All Projects</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
+        </div>
+
+        {projects.length === 0 ? (
+          <div className="card-clean p-6 text-center text-xs text-slate-500">
+            No projects assigned yet. Explore knowledge base or contact your workspace administrator.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {projects.slice(0, 3).map((proj) => (
+              <div
+                key={proj.id}
+                className="card-clean p-4 flex flex-col justify-between hover:border-indigo-500/40 transition-all group"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded bg-indigo-500/15 text-indigo-300 border border-indigo-500/20">
+                      {proj.code}
+                    </span>
+                    <span className="text-[10px] font-mono text-emerald-400">
+                      {proj.knowledge_count || 0} Sources Cleared
+                    </span>
+                  </div>
+                  <h3 className="text-sm font-bold text-white group-hover:text-indigo-300 transition-colors mb-1">
+                    {proj.name}
+                  </h3>
+                  <p className="text-xs text-slate-400 line-clamp-2 leading-relaxed mb-3">
+                    {proj.description || 'Enterprise project repository & knowledge base.'}
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => navigate(`/projects/${proj.id}/understand`)}
+                  className="w-full py-2 px-3 rounded-lg bg-indigo-600/90 hover:bg-indigo-600 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-all shadow-sm"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-200" />
+                  <span>Understand Project</span>
+                  <ArrowRight className="w-3 h-3 group-hover:translate-x-0.5 transition-transform" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Security Governance & Recent Queries 2-Column Section */}

@@ -125,4 +125,21 @@ export const api = {
   updatePolicy: (id, data) => request(`/policies/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   simulatePolicy: (mockUser, mockDocument) =>
     request('/policies/evaluate', { method: 'POST', body: JSON.stringify({ mockUser, mockDocument }) }),
+
+  // Projects & Project Intelligence
+  getProjects: () => request('/projects'),
+  getProject: (id) => request(`/projects/${id}`),
+  createProject: (data) => request('/projects', { method: 'POST', body: JSON.stringify(data) }),
+  updateProject: (id, data) => request(`/projects/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  archiveProject: (id) => request(`/projects/${id}`, { method: 'DELETE' }),
+  getProjectMembers: (id) => request(`/projects/${id}/members`),
+  addProjectMember: (id, data) => request(`/projects/${id}/members`, { method: 'POST', body: JSON.stringify(data) }),
+  removeProjectMember: (id, userId) => request(`/projects/${id}/members/${userId}`, { method: 'DELETE' }),
+  addProjectGroup: (id, data) => request(`/projects/${id}/groups`, { method: 'POST', body: JSON.stringify(data) }),
+  removeProjectGroup: (id, groupId) => request(`/projects/${id}/groups/${groupId}`, { method: 'DELETE' }),
+  getProjectKnowledge: (id) => request(`/projects/${id}/knowledge`),
+  addProjectKnowledge: (id, data) => request(`/projects/${id}/knowledge`, { method: 'POST', body: JSON.stringify(data) }),
+  removeProjectKnowledge: (id, documentId) => request(`/projects/${id}/knowledge/${documentId}`, { method: 'DELETE' }),
+  queryProjectRAG: (id, query) => request(`/projects/${id}/query`, { method: 'POST', body: JSON.stringify({ query }) }),
+  understandProject: (id, action, query) => request(`/projects/${id}/understand`, { method: 'POST', body: JSON.stringify({ action, query }) }),
 };

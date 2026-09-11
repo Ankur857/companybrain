@@ -13,7 +13,8 @@ import {
   ClipboardList,
   GitFork,
   Sparkles,
-  ShieldAlert
+  ShieldAlert,
+  FolderKanban
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 
@@ -23,7 +24,8 @@ export function Sidebar() {
 
   const primaryItems = [
     { to: '/', label: 'Overview', icon: LayoutDashboard },
-    { to: '/chat', label: 'AI Assistant', icon: MessageSquare, highlight: true },
+    { to: '/chat', label: 'AI Assistant', icon: MessageSquare },
+    { to: '/projects', label: 'Project Intelligence', icon: FolderKanban, highlight: true, badge: 'NEW' },
     { to: '/demo', label: 'Security Lab', icon: ShieldAlert, badge: 'USP' },
   ];
 

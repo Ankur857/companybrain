@@ -18,6 +18,17 @@ function loadLocalStore() {
     try {
       const data = fs.readFileSync(LOCAL_DB_FILE, 'utf-8');
       localStore = JSON.parse(data);
+      // Ensure any newly added tables from INITIAL_DATA are initialized
+      let updated = false;
+      for (const [table, rows] of Object.entries(INITIAL_DATA)) {
+        if (!localStore[table] || localStore[table].length === 0 && rows.length > 0) {
+          localStore[table] = JSON.parse(JSON.stringify(rows));
+          updated = true;
+        }
+      }
+      if (updated) {
+        saveLocalStore();
+      }
       console.log('✅ Loaded existing CompanyBrain database from local-db.json');
       return localStore;
     } catch (err) {

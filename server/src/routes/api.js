@@ -10,6 +10,7 @@ import { RAGController } from '../controllers/ragController.js';
 import { AuditController } from '../controllers/auditController.js';
 import { PolicyController } from '../controllers/policyController.js';
 import { SystemController } from '../controllers/systemController.js';
+import { ProjectController } from '../controllers/projectController.js';
 
 const router = express.Router();
 
@@ -100,5 +101,28 @@ router.get('/policies', authenticate, PolicyController.getAll);
 router.post('/policies', authenticate, requireAdmin, PolicyController.create);
 router.put('/policies/:id', authenticate, requireAdmin, PolicyController.update);
 router.post('/policies/evaluate', authenticate, PolicyController.simulate);
+
+// ================= PROJECT INTELLIGENCE =================
+router.get('/projects', authenticate, ProjectController.getAll);
+router.post('/projects', authenticate, requireAdmin, ProjectController.create);
+router.get('/projects/:id', authenticate, ProjectController.getById);
+router.put('/projects/:id', authenticate, requireAdmin, ProjectController.update);
+router.delete('/projects/:id', authenticate, requireAdmin, ProjectController.archive);
+
+// Project Membership (Users & Groups)
+router.get('/projects/:id/members', authenticate, ProjectController.getMembers);
+router.post('/projects/:id/members', authenticate, requireAdmin, ProjectController.addMember);
+router.delete('/projects/:id/members/:userId', authenticate, requireAdmin, ProjectController.removeMember);
+router.post('/projects/:id/groups', authenticate, requireAdmin, ProjectController.addGroup);
+router.delete('/projects/:id/groups/:groupId', authenticate, requireAdmin, ProjectController.removeGroup);
+
+// Project Knowledge Attachments
+router.get('/projects/:id/knowledge', authenticate, ProjectController.getKnowledge);
+router.post('/projects/:id/knowledge', authenticate, requireAdmin, ProjectController.addKnowledge);
+router.delete('/projects/:id/knowledge/:docId', authenticate, requireAdmin, ProjectController.removeKnowledge);
+
+// Project Intelligence Queries & AI Explanations
+router.post('/projects/:id/query', authenticate, ProjectController.queryProject);
+router.post('/projects/:id/understand', authenticate, ProjectController.understandProject);
 
 export default router;

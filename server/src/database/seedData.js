@@ -51,6 +51,12 @@ export const SEED_IDS = {
   USER_ADMIN_C: 'c3333333-0000-0000-0000-000000000003',
 
   USER_SUPERADMIN: 'c0000000-0000-0000-0000-000000000001',
+
+  // Projects
+  PROJECT_ALPHA: 'p1111111-0000-0000-0000-000000000001',
+  PROJECT_STEALTH: 'p1111111-0000-0000-0000-000000000002',
+  PROJECT_BETA: 'p2222222-0000-0000-0000-000000000001',
+  PROJECT_GAMMA: 'p3333333-0000-0000-0000-000000000001',
 };
 
 export const INITIAL_DATA = {
@@ -867,4 +873,94 @@ Orbit Systems Global Telemetry, Tracking, and Command (TT&C) Network:
   connector_accounts: [],
   connector_items: [],
   connector_access_rules: [],
+
+  // ================= PROJECT INTELLIGENCE TABLES =================
+  projects: [
+    {
+      id: SEED_IDS.PROJECT_ALPHA,
+      tenant_id: SEED_IDS.TENANT_ACME,
+      name: 'Project Alpha',
+      code: 'ALPHA',
+      description: 'Ultra-high throughput payment processing and event-driven microservices platform built for enterprise banking resilience.',
+      owner_id: SEED_IDS.USER_ADMIN_A,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 45 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 5 * 86400000).toISOString(),
+    },
+    {
+      id: SEED_IDS.PROJECT_STEALTH,
+      tenant_id: SEED_IDS.TENANT_ACME,
+      name: 'Project Stealth Finance',
+      code: 'STEALTH',
+      description: 'Confidential executive investment and acquisition modeling platform.',
+      owner_id: SEED_IDS.USER_ADMIN_A,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 1 * 86400000).toISOString(),
+    },
+    {
+      id: SEED_IDS.PROJECT_BETA,
+      tenant_id: SEED_IDS.TENANT_NOVA,
+      name: 'Project Beta',
+      code: 'BETA',
+      description: 'Sub-microsecond algorithmic order matching and institutional trade execution engine with FPGA hardware acceleration.',
+      owner_id: SEED_IDS.USER_ADMIN_B,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 35 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+    },
+    {
+      id: SEED_IDS.PROJECT_GAMMA,
+      tenant_id: SEED_IDS.TENANT_ORBIT,
+      name: 'Project Gamma',
+      code: 'GAMMA',
+      description: 'Autonomous low-Earth orbit satellite guidance and Attitude Determination & Control Subsystem (ADCS) constellation.',
+      owner_id: SEED_IDS.USER_ADMIN_C,
+      status: 'ACTIVE',
+      created_at: new Date(Date.now() - 25 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+    },
+  ],
+
+  project_members: [
+    // Project Alpha members: Rahul, Priya, Admin A
+    { project_id: SEED_IDS.PROJECT_ALPHA, user_id: SEED_IDS.USER_RAHUL, created_at: new Date(Date.now() - 40 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_ALPHA, user_id: SEED_IDS.USER_PRIYA, created_at: new Date(Date.now() - 40 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_ALPHA, user_id: SEED_IDS.USER_ADMIN_A, created_at: new Date(Date.now() - 45 * 86400000).toISOString() },
+
+    // Project Beta members: Arjun, Admin B
+    { project_id: SEED_IDS.PROJECT_BETA, user_id: SEED_IDS.USER_ARJUN, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_BETA, user_id: SEED_IDS.USER_ADMIN_B, created_at: new Date(Date.now() - 35 * 86400000).toISOString() },
+
+    // Project Gamma members: Karan, Admin C
+    { project_id: SEED_IDS.PROJECT_GAMMA, user_id: SEED_IDS.USER_KARAN, created_at: new Date(Date.now() - 20 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_GAMMA, user_id: SEED_IDS.USER_ADMIN_C, created_at: new Date(Date.now() - 25 * 86400000).toISOString() },
+  ],
+
+  project_groups: [
+    // Project Alpha assigned groups: Engineering, Project-Alpha
+    { project_id: SEED_IDS.PROJECT_ALPHA, group_id: SEED_IDS.ACME_GRP_ENG, created_at: new Date(Date.now() - 40 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_ALPHA, group_id: SEED_IDS.ACME_GRP_ALPHA, created_at: new Date(Date.now() - 40 * 86400000).toISOString() },
+
+    // Project Beta assigned groups: Engineering, Project-Beta
+    { project_id: SEED_IDS.PROJECT_BETA, group_id: SEED_IDS.NOVA_GRP_ENG, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_BETA, group_id: SEED_IDS.NOVA_GRP_BETA, created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+
+    // Project Gamma assigned groups: Engineering, Project-Gamma
+    { project_id: SEED_IDS.PROJECT_GAMMA, group_id: SEED_IDS.ORBIT_GRP_ENG, created_at: new Date(Date.now() - 20 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_GAMMA, group_id: SEED_IDS.ORBIT_GRP_GAMMA, created_at: new Date(Date.now() - 20 * 86400000).toISOString() },
+  ],
+
+  project_knowledge: [
+    // Project Alpha Attached Documents
+    { project_id: SEED_IDS.PROJECT_ALPHA, document_id: 'f1111111-0000-0000-0000-000000000001', created_at: new Date(Date.now() - 40 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_ALPHA, document_id: 'f1111111-0000-0000-0000-000000000002', created_at: new Date(Date.now() - 40 * 86400000).toISOString() },
+    { project_id: SEED_IDS.PROJECT_ALPHA, document_id: 'd029f78f-d2e4-43e4-879d-987b7999f531', created_at: new Date(Date.now() - 10 * 86400000).toISOString() },
+
+    // Project Beta Attached Documents
+    { project_id: SEED_IDS.PROJECT_BETA, document_id: 'f2222222-0000-0000-0000-000000000001', created_at: new Date(Date.now() - 30 * 86400000).toISOString() },
+
+    // Project Gamma Attached Documents
+    { project_id: SEED_IDS.PROJECT_GAMMA, document_id: 'f3333333-0000-0000-0000-000000000001', created_at: new Date(Date.now() - 20 * 86400000).toISOString() },
+  ],
 };

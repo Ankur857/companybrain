@@ -16,6 +16,8 @@ import { AccessGroups } from './pages/AccessGroups';
 import { Policies } from './pages/Policies';
 import { AuditLogs } from './pages/AuditLogs';
 import { Architecture } from './pages/Architecture';
+import { Projects } from './pages/Projects';
+import { ProjectIntelligence } from './pages/ProjectIntelligence';
 
 export default function App() {
   const { loading, user, isAuthModalOpen, closeAuthModal } = useAuth();
@@ -47,6 +49,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/chat" element={<AIAssistant />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/projects/:id/understand" element={<ProjectIntelligence />} />
             <Route path="/demo" element={<SecurityDemo />} />
             <Route path="/companies" element={<Companies />} />
             <Route path="/knowledge" element={<KnowledgeSources />} />

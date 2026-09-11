@@ -231,4 +231,239 @@ export class RAGService {
       },
     };
   }
+
+  /**
+   * Execute Project-Scoped, Permission-Aware Intelligence Query
+   * Strictly enforces:
+   * Level 1: User must be a member of the project (directly or through assigned access group)
+   * Level 2: Pre-RAG document policy clearance on attached project knowledge
+   */
+  static async executeProjectQuery({ user, project_id, query = '', action_type = 'chat' }) {
+    const startTime = Date.now();
+
+    if (!user) {
+      throw new Error('Unauthorized: Authentication required.');
+    }
+
+    // 1. Fetch Project & Tenant Boundary Check
+    const { data: project } = await db.from('projects').select('*').eq('id', project_id).single();
+    if (!project) {
+      return {
+        success: false,
+        error: 'Project not found.',
+        answer: 'The requested project could not be found.',
+        sources: [],
+        decision: 'DENY',
+      };
+    }
+
+    const tenantId = user.tenant_id;
+    if (project.tenant_id !== tenantId && user.role_name !== 'Super Admin') {
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: user.id,
+        user_name: user.name,
+        action: 'PROJECT_QUERY',
+        resource_type: 'PROJECT',
+        resource_id: project_id,
+        decision: 'DENY',
+        reason: `Tenant isolation violation: User belonging to tenant [${tenantId}] attempted to query project [${project.name}] in tenant [${project.tenant_id}].`,
+        metadata: { query, requestedProjectId: project_id },
+      });
+
+      return {
+        success: false,
+        error: 'Forbidden: Tenant isolation boundary.',
+        answer: 'Access denied: You do not have authorization to query projects from this company tenant.',
+        sources: [],
+        decision: 'DENY',
+      };
+    }
+
+    // 2. LEVEL 1: PROJECT MEMBERSHIP VERIFICATION
+    let isProjectMember = ['Company Admin', 'Super Admin'].includes(user.role_name);
+
+    if (!isProjectMember) {
+      // Check direct user membership
+      const { data: directMember } = await db
+        .from('project_members')
+        .select('*')
+        .eq('project_id', project_id)
+        .eq('user_id', user.id)
+        .single();
+
+      if (directMember) {
+        isProjectMember = true;
+      } else {
+        // Check group membership
+        const { data: projectGroups } = await db
+          .from('project_groups')
+          .select('*')
+          .eq('project_id', project_id);
+
+        const projectGroupIds = new Set((projectGroups || []).map((pg) => pg.group_id));
+
+        // User's assigned groups
+        const { data: userGroupRows } = await db
+          .from('user_groups')
+          .select('*')
+          .eq('user_id', user.id);
+
+        const userGroupIds = new Set((userGroupRows || []).map((ug) => ug.group_id));
+
+        for (const gid of projectGroupIds) {
+          if (userGroupIds.has(gid)) {
+            isProjectMember = true;
+            break;
+          }
+        }
+      }
+    }
+
+    if (!isProjectMember) {
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: user.id,
+        user_name: user.name,
+        action: 'PROJECT_QUERY',
+        resource_type: 'PROJECT',
+        resource_id: project_id,
+        decision: 'DENY',
+        reason: `Access Denied: User [${user.name}] is not an authorized member of project [${project.name}].`,
+        metadata: { query, project_name: project.name, action_type },
+      });
+
+      return {
+        success: false,
+        error: `Access Denied: You are not assigned to project "${project.name}".`,
+        answer: `Access Denied: You do not have permission to access project "${project.name}". An employee can only query projects to which they have been assigned.`,
+        sources: [],
+        decision: 'DENY',
+        securityIndicators: {
+          projectAccess: 'DENIED (Not a member)',
+          policyEngine: 'BLOCKED (Pre-RAG)',
+          authorizedSourcesCount: 0,
+        },
+      };
+    }
+
+    // 3. RETRIEVE ATTACHED PROJECT KNOWLEDGE
+    const { data: knowledgeRows } = await db
+      .from('project_knowledge')
+      .select('*')
+      .eq('project_id', project_id);
+
+    const docIds = (knowledgeRows || []).map((k) => k.document_id);
+
+    if (docIds.length === 0) {
+      return {
+        success: true,
+        answer: `This project doesn't have any knowledge sources yet.\n\nAn administrator must attach documents or files to **${project.name}** before project intelligence can be generated.`,
+        sources: [],
+        decision: 'ALLOW',
+        securityIndicators: {
+          projectAccess: 'GRANTED',
+          policyEngine: '0 documents attached to project',
+          authorizedSourcesCount: 0,
+        },
+      };
+    }
+
+    // Fetch candidate project documents
+    const { data: projectDocs } = await db.from('documents').select('*').in('id', docIds);
+    const candidateDocs = projectDocs || [];
+
+    // 4. LEVEL 2: DOCUMENT-LEVEL SECURITY EVALUATION (BEFORE RAG)
+    const { authorized, denied } = PolicyEngine.filterAuthorizedDocuments(user, candidateDocs);
+
+    // If candidate docs exist but user lacks clearance for ALL of them:
+    if (authorized.length === 0) {
+      const topDenied = denied[0];
+      const denyReason = topDenied?.accessEvaluation?.reason || 'User lacks required access clearance for attached project documents.';
+
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: user.id,
+        user_name: user.name,
+        action: 'PROJECT_QUERY',
+        resource_type: 'DOCUMENT_SECURITY',
+        resource_id: topDenied?.id || project_id,
+        decision: 'DENY',
+        reason: denyReason,
+        metadata: { query, project_id, action_type, attempted_docs: denied.map((d) => d.title) },
+      });
+
+      return {
+        success: true,
+        answer: `Access Denied: ${denyReason}\n\nAlthough you have project access to ${project.name}, the attached documents require specific security clearance or access group memberships that your account does not possess.`,
+        sources: [],
+        decision: 'DENY',
+        securityIndicators: {
+          projectAccess: 'GRANTED',
+          documentAccess: 'DENIED by Policy Engine',
+          authorizedSourcesCount: 0,
+          deniedSourcesCount: denied.length,
+        },
+      };
+    }
+
+    // 5. CALL AI SERVICE WITH ONLY AUTHORIZED PROJECT KNOWLEDGE
+    const aiResponse = await aiService.explainProject({
+      action: action_type,
+      query,
+      project,
+      authorizedDocuments: authorized,
+      userContext: {
+        name: user.name,
+        department: user.department,
+        role_name: user.role_name,
+        tenant_id: tenantId,
+      },
+    });
+
+    // 6. RESPONSE GUARD VALIDATION
+    const guarded = ResponseGuard.validateResponse({
+      answer: aiResponse.answer,
+      authorizedDocuments: authorized,
+      sourcesUsed: aiResponse.sourcesUsed,
+      deniedDocuments: denied,
+    });
+
+    // 7. AUDIT LOG
+    const auditAction = action_type === 'summary' ? 'PROJECT_SUMMARY_GENERATED' : 'PROJECT_QUERY';
+    await AuditService.logEvent({
+      tenant_id: tenantId,
+      user_id: user.id,
+      user_name: user.name,
+      action: auditAction,
+      resource_type: 'PROJECT',
+      resource_id: project_id,
+      decision: 'ALLOW',
+      reason: `Project intelligence generated for [${project.name}] using ${authorized.length} authorized document(s).`,
+      metadata: {
+        action_type,
+        query,
+        project_name: project.name,
+        documents_accessed: authorized.length,
+        sources_used: guarded.sources.map((s) => s.title),
+        model: aiResponse.modelUsed,
+      },
+    });
+
+    return {
+      success: true,
+      answer: guarded.sanitizedAnswer,
+      sources: guarded.sources,
+      decision: 'ALLOW',
+      securityIndicators: {
+        tenantIsolation: 'Active (Enforced)',
+        projectAccess: 'VERIFIED (Member/Group)',
+        policyEngine: 'ALLOW (Pre-Retrieved)',
+        authorizedSourcesCount: authorized.length,
+        deniedSourcesCount: denied.length,
+        modelUsed: aiResponse.modelUsed,
+        processingTimeMs: Date.now() - startTime,
+      },
+    };
+  }
 }
