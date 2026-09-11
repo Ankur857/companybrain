@@ -17,6 +17,8 @@ import {
   Activity,
   Award
 } from 'lucide-react';
+import { Solution3DConvergence } from './3d/Solution3DConvergence';
+import { Product3DLayeredPreview } from './3d/Product3DLayeredPreview';
 
 export function RealisticProductUI() {
   const [activeTab, setActiveTab] = useState('architecture');
@@ -133,8 +135,16 @@ export function RealisticProductUI() {
           </p>
         </div>
 
+        {/* 3D Knowledge Convergence Demonstration */}
+        <div className="mb-12 max-w-5xl mx-auto rounded-2xl bg-[#0b1220]/80 border border-slate-800 p-2 sm:p-4 shadow-2xl backdrop-blur-xl">
+          <div className="text-center py-2 border-b border-white/5 font-mono text-xs text-indigo-300">
+            3D CONVERGENCE: SCATTERED DATA → SECURE RAG → AI REASONING
+          </div>
+          <Solution3DConvergence />
+        </div>
+
         {/* Realistic Application Interface Container */}
-        <div className="rounded-2xl border border-slate-700/80 bg-[#0b1220] shadow-2xl overflow-hidden backdrop-blur-xl">
+        <div className="rounded-2xl border border-slate-700/80 bg-[#0b1220] shadow-2xl overflow-hidden backdrop-blur-xl mb-12">
           {/* Mock Browser / Window Chrome Header */}
           <div className="flex items-center justify-between px-4 sm:px-6 py-3 bg-[#080d17] border-b border-slate-800">
             <div className="flex items-center gap-2">
@@ -337,6 +347,9 @@ export function RealisticProductUI() {
             </div>
           </div>
         </div>
+
+        {/* 3D Exploded Depth Layer Perspective Preview */}
+        <Product3DLayeredPreview />
       </div>
     </section>
   );

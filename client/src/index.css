@@ -113,3 +113,32 @@
     linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
     linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
 }
+
+/* 3D Perspective & Depth Helpers */
+.perspective-1000 {
+  perspective: 1000px;
+}
+.perspective-1200 {
+  perspective: 1200px;
+}
+.perspective-1600 {
+  perspective: 1600px;
+}
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+}
+.translate-z-12 {
+  transform: translateZ(12px);
+}
+.translate-z-24 {
+  transform: translateZ(24px);
+}
+.translate-z-36 {
+  transform: translateZ(36px);
+}
+.translate-z-48 {
+  transform: translateZ(48px);
+}

@@ -1,6 +1,7 @@
 import React from 'react';
 import { ArrowRight, Shield, Sparkles, Cpu, Layers } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { FinalCTA3DScene } from './3d/FinalCTA3DScene';
 
 export function FinalCTASection() {
   const scrollToArchitecture = () => {
@@ -17,15 +18,9 @@ export function FinalCTASection() {
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[550px] h-[350px] bg-gradient-to-r from-blue-600/10 via-indigo-600/15 to-purple-600/10 rounded-full blur-3xl pointer-events-none" />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        {/* Simplified Central 3D Core Motif */}
-        <div className="relative mx-auto w-24 h-24 mb-8 flex items-center justify-center">
-          {/* Subtle spinning concentric rings */}
-          <div className="absolute inset-0 rounded-full border border-indigo-500/30 animate-spin" style={{ animationDuration: '20s' }} />
-          <div className="absolute inset-2 rounded-full border border-sky-400/20 animate-spin" style={{ animationDuration: '15s', animationDirection: 'reverse' }} />
-          
-          <div className="w-16 h-16 rounded-2xl bg-[#0e1628]/90 border border-indigo-400/40 shadow-[0_0_30px_rgba(99,102,241,0.25)] flex items-center justify-center backdrop-blur-md">
-            <Cpu className="w-8 h-8 text-indigo-400" />
-          </div>
+        {/* Grand 3D Neural Core Canvas */}
+        <div className="mb-6">
+          <FinalCTA3DScene />
         </div>
 
         <h2 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-white">

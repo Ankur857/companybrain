@@ -10,6 +10,7 @@ import {
   Zap,
   Activity
 } from 'lucide-react';
+import { Integrations3DScene } from './3d/Integrations3DScene';
 
 export function IntegrationsSection() {
   const [hoveredCard, setHoveredCard] = useState(null);
@@ -20,7 +21,7 @@ export function IntegrationsSection() {
       <div className="absolute inset-0 bg-grid-pattern opacity-25 pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="text-center max-w-3xl mx-auto mb-16">
+        <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-sky-500/10 border border-sky-500/25 text-sky-300 text-xs font-mono mb-4">
             <Layers className="w-3.5 h-3.5 text-sky-400" />
             <span>SUPPORTED NATIVE CONNECTORS</span>
@@ -33,8 +34,14 @@ export function IntegrationsSection() {
           </p>
         </div>
 
+        {/* Live 3D Data Conduit Scene */}
+        <div className="max-w-4xl mx-auto">
+          <Integrations3DScene />
+        </div>
+
         {/* The Two Supported Integrations */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8 max-w-4xl mx-auto">
+
           {/* Card 1: Google Drive */}
           <div
             onMouseEnter={() => setHoveredCard('drive')}

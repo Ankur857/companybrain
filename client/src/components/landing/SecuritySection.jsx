@@ -12,6 +12,7 @@ import {
   Lock,
   EyeOff
 } from 'lucide-react';
+import { Security3DPipeline } from './3d/Security3DPipeline';
 
 export function SecuritySection() {
   const [selectedStep, setSelectedStep] = useState(2); // Default on Access Policy
@@ -116,6 +117,9 @@ export function SecuritySection() {
 
         {/* Interactive Animated Architecture Pipeline Diagram */}
         <div className="bg-[#0b1220] border border-slate-700/80 rounded-2xl p-6 sm:p-10 shadow-2xl backdrop-blur-xl">
+          {/* 3D WebGL Pipeline Visualizer */}
+          <Security3DPipeline />
+
           {/* Horizontal / Wrapped Pipeline Flow */}
           <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3 mb-10">
             {pipelineSteps.map((step, idx) => {

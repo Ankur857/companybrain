@@ -11,6 +11,7 @@ import {
   Clock,
   Sparkles
 } from 'lucide-react';
+import { Experience3DWorkflow } from './3d/Experience3DWorkflow';
 
 export function ExperienceSection() {
   const steps = [
@@ -54,7 +55,7 @@ export function ExperienceSection() {
       <div className="absolute inset-0 bg-grid-pattern opacity-25 pointer-events-none" />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-        <div className="text-center max-w-3xl mx-auto mb-16">
+        <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-purple-500/10 border border-purple-500/25 text-purple-300 text-xs font-mono mb-4">
             <Award className="w-3.5 h-3.5 text-purple-400" />
             <span>CONTINUOUS INSTITUTIONAL LEARNING</span>
@@ -68,6 +69,11 @@ export function ExperienceSection() {
           <p className="mt-4 text-base sm:text-lg text-slate-400 leading-relaxed">
             Transform everyday troubleshooting into permanent organizational intelligence. Every approved experience directly strengthens the AI Assistant for the rest of your team.
           </p>
+        </div>
+
+        {/* 3D Milestone Lifecycle Workflow */}
+        <div className="max-w-4xl mx-auto mb-12">
+          <Experience3DWorkflow />
         </div>
 
         {/* Elegant Timeline Flow */}

@@ -12,6 +12,7 @@ import {
   Lock,
   ArrowDown
 } from 'lucide-react';
+import { Problem3DScene } from './3d/Problem3DScene';
 
 export function ProblemSection() {
   return (
@@ -24,7 +25,7 @@ export function ProblemSection() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
         {/* Header */}
-        <div className="text-center max-w-3xl mx-auto mb-16">
+        <div className="text-center max-w-3xl mx-auto mb-12">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 border border-red-500/25 text-red-300 text-xs font-mono mb-4">
             <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
             <span>THE ENTERPRISE KNOWLEDGE CRISIS</span>
@@ -40,8 +41,11 @@ export function ProblemSection() {
           </p>
         </div>
 
-        {/* Visual Scene: Floating Scattered Representations */}
-        <div className="relative max-w-5xl mx-auto min-h-[420px] rounded-2xl bg-[#0b1220]/80 border border-slate-800 p-6 sm:p-10 flex flex-col items-center justify-center shadow-2xl backdrop-blur-md">
+        {/* 3D Visual Scene: Scattered Floating Knowledge Space */}
+        <div className="relative max-w-5xl mx-auto rounded-2xl bg-[#0b1220]/90 border border-slate-800 p-4 sm:p-6 shadow-2xl backdrop-blur-md overflow-hidden">
+          {/* Interactive 3D Canvas */}
+          <Problem3DScene />
+
           {/* Central User / Searching Icon */}
           <div className="relative z-20 flex flex-col items-center">
             <div className="w-20 h-20 rounded-2xl bg-slate-800/90 border border-slate-600 flex items-center justify-center shadow-2xl shadow-black/50 animate-pulse-glow">
