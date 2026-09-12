@@ -112,10 +112,19 @@ export class PolicyEngine {
       });
 
       if (!hasGroup) {
-        // Company Admins have access to internal documentation if tenant matches,
-        // but not if document is marked strictly department-restricted without group
+        // Super Admins have platform-wide operational access to non-highly-confidential knowledge
+        if (user.role_name === 'Super Admin' && classification !== 'HIGHLY_CONFIDENTIAL') {
+          return {
+            allowed: true,
+            reason: 'Super Admin platform privilege permits access to operational knowledge sources.',
+            policy: 'Super Administrative Clearance Policy',
+            classification,
+          };
+        }
+
+        // Company Admins have access to internal and confidential tenant operational documents
         const isCompanyAdmin = user.role_name === 'Company Admin';
-        if (isCompanyAdmin && classification === 'INTERNAL') {
+        if (isCompanyAdmin && (classification === 'INTERNAL' || classification === 'CONFIDENTIAL')) {
           return {
             allowed: true,
             reason: 'Company Admin privilege permits access to tenant-internal operational documents.',

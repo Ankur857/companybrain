@@ -574,11 +574,11 @@ Leave Policies:
       source_url: 'https://acmetech.sharepoint.com/sites/hr/SharedDocuments/BenefitsHandbook2026.pdf',
       department: 'HR',
       project: 'People Care',
-      classification: 'CONFIDENTIAL',
+      classification: 'INTERNAL',
       owner: 'priya@acme.com',
       version: '2.0',
       metadata: { format: 'pdf', pages: 18 },
-      required_groups: [SEED_IDS.ACME_GRP_HR],
+      required_groups: [],
       created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
       updated_at: new Date(Date.now() - 8 * 86400000).toISOString(),
     },
@@ -632,6 +632,55 @@ Data residency: Customer data is pinned to regional data centers in North Americ
       required_groups: [], // No group required; PUBLIC classification allows all authenticated users
       created_at: new Date(Date.now() - 60 * 86400000).toISOString(),
       updated_at: new Date(Date.now() - 15 * 86400000).toISOString(),
+    },
+    {
+      id: 'f1111111-0000-0000-0000-000000000009',
+      tenant_id: SEED_IDS.TENANT_ACME,
+      connector_id: 'd1111111-0000-0000-0000-000000000001',
+      external_id: 'gdrive-handbook-009',
+      title: 'Acme Technologies Employee Handbook & Corporate Directory',
+      content: `Acme Technologies Comprehensive Employee Handbook & Corporate Directory (FY2026).
+
+1. Executive Leadership & Key Management:
+- Chief Executive Officer (CEO) & Co-Founder: Vikram Malhotra
+- Chief Technology Officer (CTO): Dr. Elena Rostova
+- VP of Engineering: Rahul Sharma
+- Head of People Operations & HR: Priya Patel (priya@acme.com)
+- Head of Cloud Infrastructure & Operations: Admin A (admin@acme.com)
+
+2. Company Locations & Global Offices:
+- Global Headquarters: 100 Montgomery Street, Suite 2400, San Francisco, CA 94104, United States
+- European Technology Hub: 25 Bank Street, Canary Wharf, London, E14 5JP, United Kingdom
+- Asia-Pacific Innovation Hub: Indiqube Golf View Homes, Wind Tunnel Road, Bangalore 560017, Karnataka, India
+
+3. Leave Policies & Paid Time Off (PTO):
+- Annual Paid Vacation: 20 days paid leave per calendar year (accrued monthly).
+- Wellness & Sick Leave: 10 paid wellness and sick days per year for physical and mental health.
+- Parental Leave: 16 weeks of 100% paid, gender-neutral parental leave for primary and secondary caregivers following birth, adoption, or foster placement.
+- Bereavement Leave: Up to 5 days paid leave.
+- Paid Company Holidays: 11 standard national holidays per calendar year plus the annual company-wide Year-End Shutdown from December 25th through January 1st.
+- Leave Application Procedure: Employees submit planned PTO requests via the HR portal at least two weeks in advance. Emergency and wellness days can be recorded on the day of absence.
+
+4. Employee Benefits & Healthcare:
+- Health & Medical: 100% employer-covered premium medical, dental, and vision insurance for full-time employees, with 80% coverage for dependents.
+- Retirement: 401(k) matching of 100% of employee contributions up to 5% of gross annual salary with immediate day-one vesting.
+- Mental Health: 12 complimentary therapy sessions annually through Lyra Health.
+- Annual Learning & Development Stipend: $1,500 per employee for books, conferences, and technical certifications.
+
+5. Workplace Model & Working Hours:
+- Flexible hybrid working model with 2 days per week in-office and 3 days remote.
+- Core business collaboration hours are 10:00 AM to 4:00 PM in each employee's regional time zone.`,
+      source_type: 'google_drive',
+      source_url: 'https://drive.google.com/corp/acme/handbook/employee-handbook-2026.pdf',
+      department: 'General',
+      project: 'Corporate Operations',
+      classification: 'INTERNAL',
+      owner: 'admin@acme.com',
+      version: '3.5',
+      metadata: { format: 'pdf', pages: 32 },
+      required_groups: [], // Open to all authenticated Acme employees
+      created_at: new Date(Date.now() - 60 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 5 * 86400000).toISOString(),
     },
 
     // ================= Nova Finance Documents =================
@@ -706,6 +755,45 @@ Institutional Client Accounts Summary:
       created_at: new Date(Date.now() - 22 * 86400000).toISOString(),
       updated_at: new Date(Date.now() - 4 * 86400000).toISOString(),
     },
+    {
+      id: 'f2222222-0000-0000-0000-000000000009',
+      tenant_id: SEED_IDS.TENANT_NOVA,
+      connector_id: 'd2222222-0000-0000-0000-000000000001',
+      external_id: 'mongo-handbook-009',
+      title: 'Nova Finance Employee Handbook & Corporate Directory',
+      content: `Nova Finance Comprehensive Employee Handbook & Corporate Directory (FY2026).
+
+1. Executive Leadership:
+- Chief Executive Officer (CEO) & Managing Partner: Marcus Sterling
+- Chief Investment Officer (CIO): Neha Kapoor
+- VP Quantitative Engineering: Arjun Mehta
+- Managing Director of Trading Operations: Admin B (admin@nova.com)
+
+2. Offices & Trading Desks:
+- Global Headquarters: 200 West Street, 38th Floor, New York, NY 10282, United States
+- London Trading Operations: 1 Canada Square, Canary Wharf, London, E14 5AA, United Kingdom
+- Singapore Quantitative Desk: Marina Bay Financial Centre Tower 1, Singapore 018981
+
+3. Leave Policies & Paid Time Off (PTO):
+- Annual Paid Vacation: 22 days paid leave per calendar year.
+- Wellness Days: 10 paid wellness days per year.
+- Parental Leave: 16 weeks 100% paid parental leave.
+- Paid Holidays: 11 NYSE market holidays observed per year.
+
+4. Working Hours:
+- Market alignment hours: 8:30 AM to 5:00 PM EST.`,
+      source_type: 'mongodb',
+      source_url: 'mongodb://cluster0.nova.internal/compliance/handbook_2026',
+      department: 'General',
+      project: 'Corporate Governance',
+      classification: 'INTERNAL',
+      owner: 'admin@nova.com',
+      version: '2.0',
+      metadata: { format: 'spec' },
+      required_groups: [], // Open to all authenticated Nova employees
+      created_at: new Date(Date.now() - 50 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 3 * 86400000).toISOString(),
+    },
 
     // ================= Orbit Systems Documents =================
     {
@@ -756,6 +844,45 @@ Orbit Systems Global Telemetry, Tracking, and Command (TT&C) Network:
       required_groups: [SEED_IDS.ORBIT_GRP_OPS, SEED_IDS.ORBIT_GRP_DEFENSE],
       created_at: new Date(Date.now() - 20 * 86400000).toISOString(),
       updated_at: new Date(Date.now() - 6 * 86400000).toISOString(),
+    },
+    {
+      id: 'f3333333-0000-0000-0000-000000000009',
+      tenant_id: SEED_IDS.TENANT_ORBIT,
+      connector_id: 'd3333333-0000-0000-0000-000000000001',
+      external_id: 'spb-handbook-009',
+      title: 'Orbit Systems Employee Handbook & Corporate Directory',
+      content: `Orbit Systems Comprehensive Employee Handbook & Corporate Directory (FY2026).
+
+1. Executive Leadership:
+- Chief Executive Officer (CEO) & Chief Flight Scientist: Dr. Alistair Vance
+- Lead Avionics Engineer: Karan Singhania
+- Director of Ground Operations: Simran Kaur
+- Aerospace Infrastructure Commander: Admin C (admin@orbit.com)
+
+2. Facilities & Mission Command:
+- Global Headquarters & Mission Operations: 400 Space Park Way, Cape Canaveral, FL 32920, United States
+- Propulsion & Avionics Flight Laboratory: 1800 Space Center Boulevard, Houston, TX 77058, United States
+- Ground Telemetry Antennas: Svalbard Satellite Station (SvalSat), Norway
+
+3. Leave Policies & Mission Downtime:
+- Annual Paid Vacation: 20 days paid leave per calendar year.
+- Mission Recovery & Wellness Days: 12 days per year.
+- Parental Leave: 16 weeks 100% paid parental leave.
+- Paid Holidays: 11 federal and space launch holidays observed per year.
+
+4. Flight Operations Schedule:
+- Shift rotation supporting 24/7 orbital pass operations with flexible engineering hours.`,
+      source_type: 'supabase',
+      source_url: 'https://orbit-avionics.internal/ops/handbook_2026.pdf',
+      department: 'General',
+      project: 'Corporate Operations',
+      classification: 'INTERNAL',
+      owner: 'admin@orbit.com',
+      version: '2.0',
+      metadata: { format: 'pdf' },
+      required_groups: [], // Open to all authenticated Orbit employees
+      created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
+      updated_at: new Date(Date.now() - 5 * 86400000).toISOString(),
     },
   ],
 

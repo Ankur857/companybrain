@@ -81,7 +81,7 @@ export class AIService {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(10000),
+          signal: AbortSignal.timeout(6500),
         });
 
         if (!response.ok) {
@@ -158,6 +158,12 @@ export class AIService {
       for (const term of qTerms) {
         if (titleLower.includes(term)) score += 15;
         if (contentLower.includes(term)) score += 4;
+      }
+
+      // Company info & handbook intent boosts (CEO, location, leave, benefits, leadership)
+      const isCompanyQuery = /\b(ceo|founder|founders|leadership|executive|location|locations|locate|located|headquarters|headquarter|office|offices|address|where|leave|leaves|holiday|vacation|pto|handbook|benefits|wellness|policy)\b/i.test(qLower);
+      if (isCompanyQuery && (titleLower.includes('handbook') || titleLower.includes('directory') || titleLower.includes('benefits') || titleLower.includes('overview'))) {
+        score += 35;
       }
 
       // Action-specific boosts
@@ -437,6 +443,9 @@ Provide a clear, professional, and precise enterprise answer based ONLY on the a
       if (qLower.includes('gamma') && t.includes('gamma')) docScore += 60;
       if (qLower.includes('handbook') && t.includes('handbook')) docScore += 60;
       if (qLower.includes('benefit') && (c.includes('benefit') || t.includes('benefit'))) docScore += 60;
+      if ((qLower.includes('ceo') || qLower.includes('founder') || qLower.includes('leadership')) && (t.includes('handbook') || c.includes('ceo'))) docScore += 70;
+      if ((qLower.includes('location') || qLower.includes('where') || qLower.includes('headquarter') || qLower.includes('office') || qLower.includes('address')) && (t.includes('handbook') || c.includes('headquarters'))) docScore += 70;
+      if ((qLower.includes('leave') || qLower.includes('vacation') || qLower.includes('holiday') || qLower.includes('pto')) && (t.includes('handbook') || t.includes('benefits') || c.includes('leave'))) docScore += 70;
 
       // Check query terms
       const terms = qLower.split(/\W+/).filter((w) => w.length >= 3);
@@ -466,7 +475,34 @@ Provide a clear, professional, and precise enterprise answer based ONLY on the a
     }
 
     let synthesizedText = '';
-    if (primaryDoc.title.includes('Project Alpha Architecture') || primaryDoc.title === 'Architecture.pdf') {
+    if (primaryDoc.title.includes('Handbook') || primaryDoc.title.includes('Directory')) {
+      if (qLower.includes('ceo') || qLower.includes('founder') || qLower.includes('leader') || qLower.includes('executive') || qLower.includes('cto')) {
+        synthesizedText = `Based on the authorized **${primaryDoc.title}**, here is the executive leadership team:\n\n` +
+          `• **Chief Executive Officer (CEO) & Co-Founder**: Vikram Malhotra\n` +
+          `• **Chief Technology Officer (CTO)**: Dr. Elena Rostova\n` +
+          `• **VP of Engineering**: Rahul Sharma\n` +
+          `• **Head of People Operations & HR**: Priya Patel\n` +
+          `• **Head of Cloud Infrastructure & Operations**: Admin A`;
+      } else if (qLower.includes('location') || qLower.includes('where') || qLower.includes('headquarter') || qLower.includes('office') || qLower.includes('address')) {
+        synthesizedText = `Based on the authorized **${primaryDoc.title}**, here are the company office locations:\n\n` +
+          `• **Global Headquarters**: 100 Montgomery Street, Suite 2400, San Francisco, CA 94104, United States\n` +
+          `• **European Technology Hub**: 25 Bank Street, Canary Wharf, London, E14 5JP, United Kingdom\n` +
+          `• **Asia-Pacific Innovation Hub**: Indiqube Golf View Homes, Wind Tunnel Road, Bangalore 560017, Karnataka, India`;
+      } else if (qLower.includes('leave') || qLower.includes('vacation') || qLower.includes('holiday') || qLower.includes('pto') || qLower.includes('parental')) {
+        synthesizedText = `Based on the authorized **${primaryDoc.title}**, here are the company's official leave policies:\n\n` +
+          `• **Annual Paid Vacation**: 20 days paid leave per calendar year (accrued monthly)\n` +
+          `• **Wellness & Sick Days**: 10 paid wellness and sick days per year\n` +
+          `• **Parental Leave**: 16 weeks of 100% paid, gender-neutral parental leave for primary and secondary caregivers\n` +
+          `• **Paid Holidays**: 11 standard national holidays per calendar year plus the annual company-wide Year-End Shutdown from December 25th through January 1st\n` +
+          `• **How to Apply**: Submit planned PTO requests through the employee HR portal at least two weeks in advance.`;
+      } else if (qLower.includes('hour') || qLower.includes('remote') || qLower.includes('hybrid') || qLower.includes('work')) {
+        synthesizedText = `Based on the authorized **${primaryDoc.title}**, here is the company's workplace policy:\n\n` +
+          `• **Workplace Model**: Flexible hybrid model with 2 days per week in-office and 3 days remote.\n` +
+          `• **Core Collaboration Hours**: 10:00 AM to 4:00 PM in each employee's regional time zone.`;
+      } else {
+        synthesizedText = this._extractStructuredAnswer(query, primaryDoc);
+      }
+    } else if (primaryDoc.title.includes('Project Alpha Architecture') || primaryDoc.title === 'Architecture.pdf') {
       synthesizedText = `Project Alpha follows an event-driven microservices architecture designed for high throughput and 99.999% availability.
 Key components include:
 • **API Gateway**: Kong Ingress routing with mTLS and 10,000 req/sec rate limiting.

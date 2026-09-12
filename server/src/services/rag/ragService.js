@@ -52,7 +52,11 @@ export class RAGService {
     }
 
     const ALLOWED_SHORT_TERMS = new Set(['cv', 'ai', 'ml', 'hr', 'ui', 'db', 'qa', 'os', 'go', 'it', 'js', 'ts', 'ci', 'cd']);
-    const stem = (word) => (word.length <= 3 ? word : word.replace(/(ing|tion|tions|ed|es|s)$/i, ''));
+    const stem = (word) => {
+      if (word.startsWith('locat')) return 'locat';
+      if (word.length <= 3) return word;
+      return word.replace(/(ing|tions|tion|ed|es|s)$/i, '');
+    };
 
     // 2. CANDIDATE RETRIEVAL (STRICTLY WITHIN TENANT)
     const { data: tenantDocs } = await db.from('documents').select('*').eq('tenant_id', effectiveTenantId);
@@ -84,6 +88,19 @@ export class RAGService {
         Boolean(doc.metadata?.fileName) ||
         !isCodeFile ||
         /\.(pdf|docx?|txt|md|csv)$/i.test(doc.title);
+
+      // Check if user specifically queries salary/compensation/payroll data
+      const isSalaryOrCompIntent = /\b(salary|salaries|compensation|bonus|bonuses|payroll|pay\b|equity grant|equity pool|equity ledger|private equity|stock options|comp\b)\b/i.test(qLower);
+
+      // Company info & handbook intent boost (CEO, location, leave, holiday, handbook, etc.)
+      const isCompanyInfoIntent = !isSalaryOrCompIntent && /\b(ceo|founder|founders|leadership|executive|head|directors|leader|locate|located|location|locations|headquarters|headquarter|headquartered|office|offices|address|city|country|state|where|leave|leaves|holiday|holidays|vacation|vacations|pto|handbook|policy|policies|benefit|benefits|wellness|perk|perks|working hours|hours|parental leave|sick leave|maternity|paternity|time off|remote work|hybrid)\b/i.test(qLower);
+      const isCompanyInfoDoc = titleLower.includes('handbook') || titleLower.includes('directory') || titleLower.includes('benefits') || titleLower.includes('overview') || titleLower.includes('policy');
+      if (isCompanyInfoIntent && isCompanyInfoDoc) {
+        score += 50;
+      }
+      if (isSalaryOrCompIntent && (titleLower.includes('salary') || titleLower.includes('compensation') || titleLower.includes('payroll') || contentLower.includes('salary benchmark'))) {
+        score += 70;
+      }
 
       // Exact phrase match in title or content
       if (qLower.length >= 4) {
@@ -146,7 +163,7 @@ export class RAGService {
 
       // Favor user documents over raw code files unless code terms are queried
       if (isCodeFile && !qLower.includes('code') && !qLower.includes('component') && !qLower.includes('import')) {
-        score = Math.max(0, score - 8);
+        score = Math.max(0, score - 25);
       }
 
       return { ...doc, relevanceScore: score };
@@ -183,8 +200,14 @@ export class RAGService {
     const highestScoredDoc = relevantCandidates[0];
     const isTopDocDenied = denied.some((d) => d.id === highestScoredDoc.id);
 
-    // If top match is denied OR all relevant matches are denied:
-    if (authorized.length === 0 || (isTopDocDenied && highestScoredDoc.relevanceScore > 10)) {
+    // Check if query specifically targets confidential compensation, salary, or payroll
+    const isSalaryOrCompIntent = /\b(salary|salaries|compensation|bonus|bonuses|payroll|pay\b|equity grant|equity pool|equity ledger|private equity|stock options|comp\b)\b/i.test(qLower);
+
+    // If all candidates are denied OR (the user asks for confidential compensation data and lacks clearance)
+    const hasDeniedConfidentialDoc = isTopDocDenied || denied.some((d) => d.title.toLowerCase().includes('salary') || d.classification === 'HIGHLY_CONFIDENTIAL');
+    const shouldDenyQuery = authorized.length === 0 || (isSalaryOrCompIntent && hasDeniedConfidentialDoc);
+
+    if (shouldDenyQuery) {
       const topDenied = denied[0] || highestScoredDoc;
       const denyReason = topDenied.accessEvaluation?.reason ||
         `User lacks required access group to view [${topDenied.title}].`;

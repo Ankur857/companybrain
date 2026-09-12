@@ -122,10 +122,12 @@ Ask me any question below. Answers are strictly synthesized from authorized comp
   };
 
   const samplePrompts = [
-    { text: 'What is the architecture of Project Alpha?', label: 'Project Alpha Arch (ALLOW)' },
-    { text: 'Show me employee salary information and bonus allocations', label: 'HR Salaries (DENIED)' },
-    { text: 'What are our employee healthcare benefits and 401(k) terms?', label: 'Benefits Policy' },
-    { text: 'What are the enterprise API Gateway specifications?', label: 'API Specs' },
+    { text: 'What is the company leave policy and holiday schedule?', label: 'Leave Policy' },
+    { text: 'Who is the CEO and executive leadership team?', label: 'CEO & Leadership' },
+    { text: 'Where is the company headquartered and located?', label: 'Office Locations' },
+    { text: 'What are our employee healthcare benefits and 401(k) terms?', label: 'Benefits & 401(k)' },
+    { text: 'What is the architecture of Project Alpha?', label: 'Project Alpha Arch' },
+    { text: 'Show me employee salary information and bonus allocations', label: 'HR Salaries (Security Check)' },
   ];
 
   return (
