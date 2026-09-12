@@ -49,9 +49,8 @@ export class AIService {
    * Call Google Gemini API with automatic candidate model failover
    */
   async _callGemini({ systemPrompt, userPrompt, temperature = 0.2, maxTokens = 1500 }) {
-    const primaryModel = this.geminiModel || 'gemini-3.5-flash';
-    const fallbackModels = ['gemini-3.5-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash'];
-    const candidateModels = [primaryModel, ...fallbackModels.filter((m) => m !== primaryModel)];
+    const primaryModel = this.geminiModel || 'gemini-3.5-flash-lite';
+    const candidateModels = [primaryModel];
     const key = this.geminiApiKey || this.apiKey;
 
     let lastError = null;
@@ -82,7 +81,7 @@ export class AIService {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify(body),
-          signal: AbortSignal.timeout(25000),
+          signal: AbortSignal.timeout(10000),
         });
 
         if (!response.ok) {
@@ -111,7 +110,7 @@ export class AIService {
    * Filters out massive noise files (package-lock.json, build bundles) and prioritizes
    * files uploaded/selected by the user.
    */
-  _selectRelevantContext(authorizedDocuments, query = '', action = 'chat', maxDocs = 8, maxCharsPerDoc = 4500) {
+  _selectRelevantContext(authorizedDocuments, query = '', action = 'chat', maxDocs = 8, maxCharsPerDoc = 30000) {
     if (!authorizedDocuments || authorizedDocuments.length === 0) {
       return { selectedDocs: [], contextBlock: '' };
     }
@@ -130,24 +129,35 @@ export class AIService {
     // Score documents by relevance to query & action
     const qLower = (query || '').toLowerCase();
     const qTerms = qLower.split(/\W+/).filter((w) => w.length >= 2);
+    const isDocIntent = /\b(uploaded|upload|sync|synced|drive|document|documents|doc|docs|file|files|pdf|cv|resume|report|attachment)\b/i.test(qLower);
 
     const scored = pool.map((doc) => {
       let score = 0;
       const titleLower = (doc.title || '').toLowerCase();
       const contentLower = (doc.content || '').toLowerCase();
+      const isCodeFile = /\.(jsx?|tsx?|json|css|html|sql|lock)$/i.test(doc.title);
       const isUserUploaded =
-        doc.source_type === 'supabase' ||
         doc.source_type === 'google_drive' ||
+        doc.source_type === 'sharepoint' ||
+        doc.source_type === 'file_upload' ||
         Boolean(doc.metadata?.uploadedBy) ||
-        Boolean(doc.metadata?.fileName);
+        Boolean(doc.metadata?.fileName) ||
+        !isCodeFile ||
+        /\.(pdf|docx?|txt|md|csv)$/i.test(doc.title);
 
       // Boost user-uploaded / connector files so Gemini always focuses on files the user uploaded or selected
-      if (isUserUploaded) score += 20;
+      if (isUserUploaded) score += 30;
+      if (isDocIntent && isUserUploaded) score += 20;
+
+      // De-prioritize raw source code files unless code is specifically queried
+      if (isCodeFile && !qLower.includes('code') && !qLower.includes('component')) {
+        score -= 15;
+      }
 
       // Direct filename or term matching in title
       for (const term of qTerms) {
         if (titleLower.includes(term)) score += 15;
-        if (contentLower.includes(term)) score += 3;
+        if (contentLower.includes(term)) score += 4;
       }
 
       // Action-specific boosts
@@ -410,24 +420,49 @@ Provide a clear, professional, and precise enterprise answer based ONLY on the a
    * Internal deterministic RAG synthesis that uses real authorized document content
    */
   _synthesizeLocalAnswer(query, authorizedDocuments) {
-    const qLower = query.toLowerCase();
+    const qLower = (query || '').toLowerCase();
 
-    // Find best matching document
+    // Score candidates to find best matching document
     let primaryDoc = authorizedDocuments[0];
+    let bestScore = -1;
+
     for (const doc of authorizedDocuments) {
-      const titleLower = doc.title.toLowerCase();
-      const contentLower = doc.content.toLowerCase();
-      if (
-        (qLower.includes('alpha') && titleLower.includes('alpha')) ||
-        (qLower.includes('beta') && titleLower.includes('beta')) ||
-        (qLower.includes('gamma') && titleLower.includes('gamma')) ||
-        (qLower.includes('architecture') && contentLower.includes('architecture')) ||
-        (qLower.includes('handbook') && titleLower.includes('handbook')) ||
-        (qLower.includes('benefit') && contentLower.includes('benefit'))
-      ) {
-        primaryDoc = doc;
-        break;
+      let docScore = 0;
+      const t = (doc.title || '').toLowerCase();
+      const c = (doc.content || '').toLowerCase();
+      const isCode = /\.(jsx?|tsx?|json|css|html|sql|lock)$/i.test(doc.title);
+
+      if (qLower.includes('alpha') && t.includes('alpha')) docScore += 60;
+      if (qLower.includes('beta') && t.includes('beta')) docScore += 60;
+      if (qLower.includes('gamma') && t.includes('gamma')) docScore += 60;
+      if (qLower.includes('handbook') && t.includes('handbook')) docScore += 60;
+      if (qLower.includes('benefit') && (c.includes('benefit') || t.includes('benefit'))) docScore += 60;
+
+      // Check query terms
+      const terms = qLower.split(/\W+/).filter((w) => w.length >= 3);
+      for (const term of terms) {
+        if (t.includes(term)) docScore += 15;
+        if (c.includes(term)) docScore += 4;
       }
+
+      // Prioritize uploaded user documents over source code files
+      if (!isCode || doc.source_type === 'google_drive' || doc.source_type === 'file_upload') {
+        docScore += 20;
+      }
+
+      if (docScore > bestScore) {
+        bestScore = docScore;
+        primaryDoc = doc;
+      }
+    }
+
+    if (!primaryDoc || !primaryDoc.content) {
+      return {
+        answer: "Based on the authorized documents available to your access level, this information is not documented.",
+        sourcesUsed: [],
+        modelUsed: 'CompanyBrain-RAG-Adapter (Secure Pre-Filtered Context)',
+        tokens: 100,
+      };
     }
 
     let synthesizedText = '';
@@ -449,10 +484,8 @@ It achieves a P99 tick-to-trade latency of 840 nanoseconds using Solarflare Onlo
       synthesizedText = `Project Gamma is Orbit Systems' autonomous satellite guidance and ADCS constellation operating in Sun-Synchronous LEO at 550km altitude.
 It utilizes radiation-hardened Xilinx Virtex-5 FPGAs, dual autonomous star-trackers, and pulsed plasma thrusters for autonomous collision avoidance.`;
     } else {
-      // General excerpt synthesis from authorized document
-      const sentences = primaryDoc.content.split('\n').filter((s) => s.trim().length > 10);
-      synthesizedText = `Based on your authorized knowledge source (${primaryDoc.title}):\n\n` +
-        sentences.slice(0, 4).join('\n');
+      // Dynamic intelligent extraction for arbitrary uploaded documents
+      synthesizedText = this._extractStructuredAnswer(query, primaryDoc);
     }
 
     return {
@@ -468,6 +501,151 @@ It utilizes radiation-hardened Xilinx Virtex-5 FPGAs, dual autonomous star-track
       modelUsed: 'CompanyBrain-RAG-Adapter (Secure Pre-Filtered Context)',
       tokens: 380,
     };
+  }
+
+  /**
+   * Intelligently extract targeted answers from an uploaded document
+   * based on document structure and user query intent.
+   */
+  _extractStructuredAnswer(query, doc) {
+    const qLower = (query || '').toLowerCase();
+    const content = doc.content || '';
+    const lines = content.split('\n').map((l) => l.trim()).filter(Boolean);
+
+    // Normalize query keywords
+    const keywords = qLower.split(/\W+/).filter((w) => w.length >= 3);
+
+    // 1. PROJECTS / APPS / WORK EXPERIENCE
+    if (
+      qLower.includes('project') ||
+      qLower.includes('app') ||
+      qLower.includes('work') ||
+      qLower.includes('experience') ||
+      qLower.includes('built') ||
+      qLower.includes('developed')
+    ) {
+      const projIdx = lines.findIndex((l) => /^projects\b/i.test(l) || /project experience/i.test(l));
+      if (projIdx !== -1) {
+        const collected = [];
+        for (let i = projIdx; i < lines.length; i++) {
+          const l = lines[i];
+          if (i > projIdx && /^(technical skills|skills|education|experience|certifications|awards|interests|references)\b/i.test(l)) {
+            break;
+          }
+          if (l.startsWith('-- ') && l.endsWith(' --')) continue;
+          collected.push(l);
+        }
+        if (collected.length > 1) {
+          return `Based on the uploaded document (${doc.title}), here are the documented projects and experience:\n\n` +
+            collected.join('\n\n');
+        }
+      }
+    }
+
+    // 2. SKILLS / TECHNOLOGIES / TOOLS / PROGRAMMING LANGUAGES
+    if (
+      qLower.includes('skill') ||
+      qLower.includes('tech') ||
+      qLower.includes('tool') ||
+      qLower.includes('language') ||
+      qLower.includes('stack') ||
+      qLower.includes('framework')
+    ) {
+      const skillIdx = lines.findIndex((l) => /^(technical skills|skills|technologies|tools)\b/i.test(l));
+      if (skillIdx !== -1) {
+        const collected = [];
+        for (let i = skillIdx; i < lines.length; i++) {
+          const l = lines[i];
+          if (i > skillIdx && /^(projects|education|experience|certifications|awards|interests)\b/i.test(l)) {
+            break;
+          }
+          if (l.startsWith('-- ') && l.endsWith(' --')) continue;
+          collected.push(l);
+        }
+        if (collected.length > 1) {
+          return `Based on the uploaded document (${doc.title}), here are the documented technical skills:\n\n` +
+            collected.join('\n\n');
+        }
+      }
+    }
+
+    // 3. EDUCATION / DEGREE / COLLEGE / UNIVERSITY / CGPA
+    if (
+      qLower.includes('education') ||
+      qLower.includes('degree') ||
+      qLower.includes('college') ||
+      qLower.includes('university') ||
+      qLower.includes('cgpa') ||
+      qLower.includes('study') ||
+      qLower.includes('studied') ||
+      qLower.includes('qualification')
+    ) {
+      const eduIdx = lines.findIndex((l) => /^(education|academic background|qualifications)\b/i.test(l));
+      if (eduIdx !== -1) {
+        const collected = [];
+        for (let i = eduIdx; i < lines.length; i++) {
+          const l = lines[i];
+          if (i > eduIdx && /^(projects|technical skills|skills|experience|certifications)\b/i.test(l)) {
+            break;
+          }
+          if (l.startsWith('-- ') && l.endsWith(' --')) continue;
+          collected.push(l);
+        }
+        if (collected.length > 1) {
+          return `Based on the uploaded document (${doc.title}), here is the documented educational background:\n\n` +
+            collected.join('\n\n');
+        }
+      }
+    }
+
+    // 4. INTERNSHIP / TRAINING
+    if (
+      qLower.includes('intern') ||
+      qLower.includes('internship') ||
+      qLower.includes('training')
+    ) {
+      const internLines = lines.filter((l) =>
+        /internship|intern|training|skill lab|duration|session|swift|swiftui/i.test(l)
+      );
+      if (internLines.length > 0) {
+        return `Based on the uploaded document (${doc.title}), here are the details regarding the internship:\n\n` +
+          internLines.slice(0, 15).join('\n\n');
+      }
+    }
+
+    // 5. SPECIFIC KEYWORD / ENTITY QUERY (e.g. "PawPal", "Weather App", "Firebase", "KIET", etc.)
+    const matchedBlocks = [];
+    const paragraphs = content.split(/\n\s*\n/).map((p) => p.trim()).filter((p) => p.length > 15);
+
+    for (const para of paragraphs) {
+      const pLower = para.toLowerCase();
+      let matchCount = 0;
+      for (const kw of keywords) {
+        if (pLower.includes(kw)) matchCount++;
+      }
+      if (matchCount > 0) {
+        matchedBlocks.push({ para, matchCount });
+      }
+    }
+
+    if (matchedBlocks.length > 0) {
+      matchedBlocks.sort((a, b) => b.matchCount - a.matchCount);
+      const topParas = matchedBlocks.slice(0, 4).map((b) => b.para);
+      return `Based on your authorized knowledge source (${doc.title}):\n\n` +
+        topParas.join('\n\n');
+    }
+
+    // 6. SUMMARY / OVERVIEW / GENERAL DOCUMENT QUERY
+    const summarySections = [];
+    for (const l of lines) {
+      if (l.startsWith('-- ') && l.endsWith(' --')) continue;
+      if (summarySections.length < 15 && l.length > 5) {
+        summarySections.push(l);
+      }
+    }
+
+    return `Based on the uploaded document (${doc.title}), here is an overview of its contents:\n\n` +
+      summarySections.join('\n\n');
   }
 
   /**

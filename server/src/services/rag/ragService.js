@@ -51,40 +51,109 @@ export class RAGService {
       };
     }
 
+    const ALLOWED_SHORT_TERMS = new Set(['cv', 'ai', 'ml', 'hr', 'ui', 'db', 'qa', 'os', 'go', 'it', 'js', 'ts', 'ci', 'cd']);
+    const stem = (word) => (word.length <= 3 ? word : word.replace(/(ing|tion|tions|ed|es|s)$/i, ''));
+
     // 2. CANDIDATE RETRIEVAL (STRICTLY WITHIN TENANT)
     const { data: tenantDocs } = await db.from('documents').select('*').eq('tenant_id', effectiveTenantId);
     const documents = tenantDocs || [];
 
+    const qLower = query.toLowerCase();
+    const isDocIntent = /\b(uploaded|upload|sync|synced|drive|document|documents|doc|docs|file|files|pdf|cv|resume|report|attachment)\b/i.test(qLower);
+
     // Meaningful query keywords (filtering out stopwords)
-    const qWords = query
-      .toLowerCase()
+    const qWords = qLower
       .split(/\W+/)
-      .filter((w) => w.length >= 3 && !STOPWORDS.has(w));
+      .filter((w) => (w.length >= 3 || ALLOWED_SHORT_TERMS.has(w)) && !STOPWORDS.has(w));
+    const qStems = qWords.map((w) => stem(w));
 
     // Calculate score
     const scoredDocs = documents.map((doc) => {
       let score = 0;
-      const titleLower = doc.title.toLowerCase();
-      const contentLower = doc.content.toLowerCase();
+      const titleLower = (doc.title || '').toLowerCase();
+      const contentLower = (doc.content || '').toLowerCase();
       const deptLower = (doc.department || '').toLowerCase();
       const projLower = (doc.project || '').toLowerCase();
 
-      for (const word of qWords) {
-        if (titleLower.includes(word)) {
-          score += word === 'project' ? 2 : 12; // De-weight generic 'project' word
+      const isCodeFile = /\.(jsx?|tsx?|json|css|html|sql|lock)$/i.test(doc.title);
+      const isUserDoc =
+        doc.source_type === 'google_drive' ||
+        doc.source_type === 'sharepoint' ||
+        doc.source_type === 'file_upload' ||
+        Boolean(doc.metadata?.uploadedBy) ||
+        Boolean(doc.metadata?.fileName) ||
+        !isCodeFile ||
+        /\.(pdf|docx?|txt|md|csv)$/i.test(doc.title);
+
+      // Exact phrase match in title or content
+      if (qLower.length >= 4) {
+        if (titleLower.includes(qLower)) score += 30;
+        else if (contentLower.includes(qLower)) score += 20;
+      }
+
+      // Upload/document intent boost
+      if (isDocIntent && isUserDoc) {
+        score += 15;
+        if (qLower.includes('cv') && (titleLower.includes('cv') || titleLower.includes('resume') || contentLower.includes('curriculum vitae'))) score += 25;
+        if (qLower.includes('report') && (titleLower.includes('report') || contentLower.includes('report'))) score += 20;
+        if (qLower.includes('pdf') && titleLower.endsWith('.pdf')) score += 15;
+      }
+
+      let matchedWordCount = 0;
+      for (let i = 0; i < qWords.length; i++) {
+        const word = qWords[i];
+        const wordStem = qStems[i];
+        let wordMatched = false;
+
+        // Title match
+        if (titleLower.includes(word) || (wordStem.length >= 3 && titleLower.includes(wordStem))) {
+          score += (word === 'project' || word === 'system') ? 3 : 15;
+          wordMatched = true;
         }
-        if (projLower.includes(word)) {
-          score += word === 'project' ? 2 : 10;
+
+        // Project / Department metadata match
+        if (projLower.includes(word) || (wordStem.length >= 3 && projLower.includes(wordStem))) {
+          score += (word === 'project') ? 2 : 10;
+          wordMatched = true;
         }
-        if (deptLower.includes(word)) score += 5;
-        if (contentLower.includes(word)) score += 2;
+        if (deptLower.includes(word)) {
+          score += 5;
+          wordMatched = true;
+        }
+
+        // Content match with frequency calculation
+        if (contentLower.includes(word) || (wordStem.length >= 3 && contentLower.includes(wordStem))) {
+          wordMatched = true;
+          const regex = new RegExp(`\\b${wordStem}`, 'gi');
+          const occurrences = (contentLower.match(regex) || []).length;
+          if (occurrences >= 5) score += 12;
+          else if (occurrences >= 2) score += 8;
+          else score += 4;
+        }
+
+        if (wordMatched) matchedWordCount++;
+      }
+
+      // Coverage boost if majority of query words match this document
+      if (qWords.length > 1 && matchedWordCount / qWords.length >= 0.5) {
+        score += 10;
+      }
+
+      // If user is querying generally about uploaded file and this is an uploaded user doc, give base score
+      if (isDocIntent && isUserDoc && score < 10) {
+        score += 10;
+      }
+
+      // Favor user documents over raw code files unless code terms are queried
+      if (isCodeFile && !qLower.includes('code') && !qLower.includes('component') && !qLower.includes('import')) {
+        score = Math.max(0, score - 8);
       }
 
       return { ...doc, relevanceScore: score };
     });
 
     // Meaningful threshold (must have distinct relevance)
-    const MIN_RELEVANCE = qWords.length > 1 ? 8 : 4;
+    const MIN_RELEVANCE = isDocIntent ? 6 : (qWords.length > 1 ? 6 : 3);
     const relevantCandidates = scoredDocs
       .filter((d) => d.relevanceScore >= MIN_RELEVANCE)
       .sort((a, b) => b.relevanceScore - a.relevanceScore);
