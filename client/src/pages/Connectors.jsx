@@ -290,8 +290,18 @@ export function Connectors() {
       }));
 
       const res = await api.selectKnowledge(browserConnector.id, itemsToSave);
-      showToast(res.message || `${itemsToSave.length} item(s) selected for CompanyBrain.`, 'success');
+      showToast(`${itemsToSave.length} item(s) selected! Synchronizing to CompanyBrain knowledge base...`, 'info');
       setShowConfirmModal(false);
+
+      // Immediately sync so files are indexed and appear in Knowledge Sources
+      try {
+        const syncRes = await api.syncConnector(browserConnector.id);
+        showToast(`Sync complete! ${syncRes.indexedCount || itemsToSave.length} item(s) indexed into Knowledge Sources.`, 'success');
+      } catch (syncErr) {
+        console.warn('Auto-sync error:', syncErr.message);
+        showToast(res.message || `${itemsToSave.length} item(s) saved. Click 'Sync' on the connector card to finalize ingestion.`, 'info');
+      }
+
       loadData();
       openFileBrowser(browserConnector, currentFolderId, 'Current', true);
     } catch (err) {
@@ -1112,7 +1122,7 @@ export function Connectors() {
                 disabled={savingSelection}
                 className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-xs font-semibold flex items-center gap-1.5 transition-all shadow-sm"
               >
-                <span>{savingSelection ? 'Saving...' : 'Continue'}</span>
+                <span>{savingSelection ? 'Syncing to Knowledge Base...' : 'Save & Sync to CompanyBrain'}</span>
                 <ChevronRight className="w-3.5 h-3.5" />
               </button>
             </div>

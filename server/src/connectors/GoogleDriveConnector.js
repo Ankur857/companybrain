@@ -255,7 +255,31 @@ export class GoogleDriveConnector extends BaseConnector {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     if (!res.ok) throw new Error(`Failed to download file from Google Drive: ${res.statusText}`);
-    return await res.text();
+
+    const arrayBuffer = await res.arrayBuffer();
+    const uint8 = new Uint8Array(arrayBuffer);
+    const header = Buffer.from(uint8.slice(0, 8)).toString('utf8');
+    const isPdf =
+      mimeType === 'application/pdf' ||
+      header.startsWith('%PDF-') ||
+      (metadata.name && String(metadata.name).toLowerCase().endsWith('.pdf'));
+
+    if (isPdf) {
+      try {
+        const { PDFParse } = await import('pdf-parse');
+        const parser = new PDFParse({ data: uint8 });
+        await parser.load();
+        const resText = await parser.getText();
+        const extracted = resText?.text || (typeof resText === 'string' ? resText : '');
+        if (extracted && extracted.trim().length > 0) {
+          return extracted.trim();
+        }
+      } catch (pdfErr) {
+        console.warn(`PDF text extraction warning for [${metadata.name || itemId}]:`, pdfErr.message);
+      }
+    }
+
+    return Buffer.from(uint8).toString('utf8');
   }
 
   async disconnect() {

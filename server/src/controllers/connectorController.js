@@ -1028,7 +1028,12 @@ export class ConnectorController {
         // Fetch actual content from the real source
         let realContent = '';
         try {
-          realContent = await adapter.downloadItem(item.external_id, item.metadata || {});
+          realContent = await adapter.downloadItem(item.external_id, {
+            ...(item.metadata || {}),
+            mime_type: item.mime_type,
+            name: item.name,
+            path: item.path,
+          });
         } catch (fetchErr) {
           console.warn(`Content fetch warning for [${item.name}]:`, fetchErr.message);
           realContent = `Knowledge item: ${item.name} (${item.path})\nSource: ${connector.name}`;
@@ -1047,6 +1052,7 @@ export class ConnectorController {
             required_groups: Array.from(groupIds),
             metadata: {
               ...item.metadata,
+              folderName: item.metadata?.folderName || (connector.type === 'google_drive' ? 'Google Drive' : undefined),
               allowed_user_ids: Array.from(userIds),
               connector_id: id,
               connector_item_id: item.id,
@@ -1071,8 +1077,10 @@ export class ConnectorController {
             owner: req.user.email,
             version: '1.0',
             required_groups: Array.from(groupIds),
+            is_demo: false,
             metadata: {
               ...item.metadata,
+              folderName: item.metadata?.folderName || (connector.type === 'google_drive' ? 'Google Drive' : undefined),
               allowed_user_ids: Array.from(userIds),
               connector_id: id,
               connector_item_id: item.id,

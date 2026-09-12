@@ -154,6 +154,9 @@ export function KnowledgeSources() {
         return titleFolder;
       }
     }
+    if (doc.source_type === 'google_drive') {
+      return doc.metadata?.folderName || 'Google Drive';
+    }
     return null;
   };
 

@@ -20,6 +20,7 @@
     "jsonwebtoken": "^9.0.2",
     "jszip": "^3.10.2",
     "morgan": "^1.10.0",
+    "pdf-parse": "^2.4.5",
     "uuid": "^11.1.0"
   }
 }
