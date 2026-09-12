@@ -1239,6 +1239,44 @@ export class ConnectorController {
   }
 
   /**
+   * POST /api/connectors/:id/disconnect
+   */
+  static async disconnect(req, res) {
+    try {
+      const { id } = req.params;
+      const tenantId = req.user.tenant_id;
+
+      const { data: connector } = await db.from('connectors').select('*').eq('id', id).single();
+      if (!connector) return res.status(404).json({ success: false, error: 'Connector not found.' });
+
+      if (connector.tenant_id !== tenantId && req.user.role_name !== 'Super Admin') {
+        return res.status(403).json({ success: false, error: 'Access forbidden: Tenant isolation boundary.' });
+      }
+
+      await db.from('connectors').update({
+        status: 'DISCONNECTED',
+        sync_status: 'IDLE',
+        updated_at: new Date().toISOString(),
+      }).eq('id', id);
+
+      await AuditService.logEvent({
+        tenant_id: tenantId,
+        user_id: req.user.id,
+        user_name: req.user.name,
+        action: 'CONNECTOR_DISCONNECTED',
+        resource_type: 'CONNECTOR',
+        resource_id: connector.name,
+        decision: 'SUCCESS',
+        reason: `Disconnected connector [${connector.name}].`,
+      });
+
+      return res.json({ success: true, message: 'Connector disconnected successfully.' });
+    } catch (err) {
+      return res.status(500).json({ success: false, error: err.message });
+    }
+  }
+
+  /**
    * POST /api/connectors/:id/test
    */
   static async test(req, res) {
